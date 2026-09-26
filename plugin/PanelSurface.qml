@@ -10,6 +10,8 @@ Item {
   property var targetScreen: null
   property real uiScale: 1.25
   property var shell: null
+  property var snapshot: null
+  property string snapshotStatus: "no-engine"
 
   signal settingsRequested()
 
@@ -45,13 +47,27 @@ Item {
         yScale: canvas.height > 0 ? panel.height / canvas.height : 1
       }
 
-      // Meter Bank owns the left and narrows width. Until then this fills the canvas.
+      MeterBank {
+        id: meterBank
+        x: 0
+        y: 0
+        height: parent.height
+        canvasWidth: parent.width
+        snapshot: root.snapshot
+        snapshotStatus: root.snapshotStatus
+        width: {
+          if (meterBank.snapshotStatus === "ok") return meterBank.layout.meterWidth
+          if (meterBank.snapshotStatus === "needs-update" || meterBank.snapshotStatus === "unreadable") return 240
+          return 0
+        }
+      }
+
       InboxColumn {
         id: inbox
         anchors.top: parent.top
         anchors.bottom: parent.bottom
+        anchors.left: meterBank.right
         anchors.right: parent.right
-        width: parent.width
         shell: root.shell
         onSettingsRequested: root.settingsRequested()
       }
