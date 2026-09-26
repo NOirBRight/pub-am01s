@@ -19,7 +19,7 @@ AM01S 上整块画面：左边 Meter Bank，右边 Inbox。铺满整块屏，不
 _Avoid_: 窗口, dashboard, widget
 
 **Meter Bank**:
-Panel 左区，按用户顺序列出全部 Enabled Provider（Pinned 在这里不用）。每个 Quota Window 分一份相同宽度，所以一个 Provider 的宽度取决于它有几个 Quota Window；剩下的宽度全给 Inbox。
+Panel 左区，按用户顺序列出 Enabled 且已登录的 Provider（Pinned 在这里不用）。Engine 报 signed out 的不显示、不占宽度，只在 Settings Overlay 里出现；已登录但拉取失败的照常显示并标错。每个 Quota Window 分一份相同宽度，所以一个 Provider 的宽度取决于它有几个 Quota Window；剩下的宽度全给 Inbox。
 _Avoid_: Strip（那是 GNOME 顶栏）, 用量卡片
 
 **Level Bar**:
@@ -31,7 +31,7 @@ Meter Bank 的两种密度。每根 Level Bar 分得的宽度够（约 56 设计
 _Avoid_: 展开/收起（那是 Detail）
 
 **Detail**:
-点任一 Provider 后占满整个 Meter Bank 的放大视图：全部 Quota Window 的大号 Level Bar、完整周期名和重置时间，未登录时写原因并指向 Settings Overlay。从被点的那列放大出现，点任意处收回。其他 Provider 这时隐藏，不挤成窄条。
+点任一 Provider 后占满整个 Meter Bank 的放大视图：全部 Quota Window 的大号 Level Bar、完整周期名和重置时间；拉取失败时写原因。从被点的那列放大出现，点任意处收回。其他 Provider 这时隐藏，不挤成窄条。
 _Avoid_: Popover, 展开列
 
 **Inbox**:
