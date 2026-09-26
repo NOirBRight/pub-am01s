@@ -9,6 +9,8 @@ Item {
 
   property var targetScreen: null
   property real uiScale: 1.25
+  property var snapshot: null
+  property string snapshotStatus: "no-engine"
 
   readonly property real safeScale: root.uiScale >= 1 && root.uiScale <= 1.4 ? root.uiScale : 1.25
 
@@ -40,6 +42,17 @@ Item {
         origin.y: 0
         xScale: canvas.width > 0 ? panel.width / canvas.width : 1
         yScale: canvas.height > 0 ? panel.height / canvas.height : 1
+      }
+
+      MeterBank {
+        id: meterBank
+        x: 10
+        y: 12
+        height: parent.height - 24
+        canvasWidth: parent.width
+        snapshot: root.snapshot
+        snapshotStatus: root.snapshotStatus
+        width: meterBank.snapshotStatus === "ok" ? meterBank.layout.meterWidth : 240
       }
     }
   }
