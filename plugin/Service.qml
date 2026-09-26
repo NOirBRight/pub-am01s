@@ -101,6 +101,7 @@ Item {
     if (!panelLoader.item) return
     panelLoader.item.targetScreen = root.panelScreen
     panelLoader.item.uiScale = root.uiScale
+    panelLoader.item.shell = Qt.binding(function() { return root.shell })
   }
 
   FileView {

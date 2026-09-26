@@ -1,0 +1,205 @@
+// Omarchy notification history parsing. No QML imports (ADR 0003).
+
+var FRESH_MS = 10 * 60 * 1000
+// Swipe left is a negative dx. Commit once it passes 40% of the row width.
+var SWIPE_COMMIT_RATIO = 0.4
+var INITIAL_COLORS = ["#509475", "#2dd5b7", "#d2689c", "#a2734b", "#81b8a8", "#549e6a"]
+var B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+function oneLine(value) {
+  return String(value == null ? "" : value).replace(/\r\n|\r|\n/g, " ").replace(/^\s+|\s+$/g, "")
+}
+
+function finiteNumber(value) {
+  var n = Number(value)
+  return isFinite(n) ? n : 0
+}
+
+function timeLabel(timestamp, nowMs) {
+  var now = Number(nowMs)
+  if (!isFinite(now)) return ""
+  var seconds = Math.max(0, (now - timestamp) / 1000)
+  if (seconds < 60) return "now"
+  if (seconds < 3600) return Math.floor(seconds / 60) + "m"
+  if (seconds < 86400) return Math.floor(seconds / 3600) + "h"
+  return Math.floor(seconds / 86400) + "d"
+}
+
+function fresh(timestamp, nowMs) {
+  var now = Number(nowMs)
+  if (!isFinite(now)) return false
+  return Math.abs(now - timestamp) <= FRESH_MS
+}
+
+function initialLetter(app) {
+  var text = oneLine(app)
+  if (!text) return "?"
+  var code = text.charCodeAt(0)
+  var ch = code >= 0xd800 && code <= 0xdbff && text.length > 1 ? text.slice(0, 2) : text.charAt(0)
+  return ch.toUpperCase()
+}
+
+function initialIcon(app) {
+  var name = oneLine(app)
+  var hash = 0
+  for (var i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0
+  return {
+    kind: "initial",
+    letter: initialLetter(name),
+    color: INITIAL_COLORS[hash % INITIAL_COLORS.length],
+  }
+}
+
+function filePath(raw) {
+  var path = raw
+  if (path.indexOf("file://") === 0) {
+    path = path.slice(7)
+    try { path = decodeURIComponent(path) } catch (e) { return "" }
+    if (path.charAt(0) !== "/") {
+      var slash = path.indexOf("/")
+      path = slash >= 0 ? path.slice(slash) : ""
+    }
+  }
+  return path.charAt(0) === "/" ? path : ""
+}
+
+function iconFrom(appIcon, app) {
+  var raw = oneLine(appIcon)
+  if (!raw) return initialIcon(app)
+  if (raw.indexOf("file://") === 0 || raw.charAt(0) === "/") {
+    var path = filePath(raw)
+    return path ? { kind: "file", path: path } : initialIcon(app)
+  }
+  // image:// and other schemes are not theme icons.
+  if (raw.indexOf("://") >= 0) return initialIcon(app)
+  return { kind: "theme-name", name: raw }
+}
+
+// execArgv is "" or a JSON argv array. A leading-dash program is not runnable
+// (it would be read as an option), so it is treated as no action.
+function actionFrom(execArgv) {
+  if (execArgv == null || execArgv === "") return null
+  var parsed = execArgv
+  if (typeof parsed === "string") {
+    try { parsed = JSON.parse(parsed) } catch (e) { return null }
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) return null
+  for (var i = 0; i < parsed.length; i++) {
+    if (typeof parsed[i] !== "string") return null
+  }
+  if (!parsed[0] || parsed[0].charAt(0) === "-") return null
+  return parsed.slice()
+}
+
+function rowFrom(path, entry, nowMs) {
+  var timestamp = finiteNumber(entry.timestamp)
+  return {
+    path: String(path || ""),
+    app: oneLine(entry.app),
+    summary: oneLine(entry.summary),
+    body: oneLine(entry.body),
+    timeLabel: timeLabel(timestamp, nowMs),
+    fresh: fresh(timestamp, nowMs),
+    icon: iconFrom(entry.appIcon, entry.app),
+    action: actionFrom(entry.execArgv),
+    timestamp: timestamp,
+  }
+}
+
+function readInbox(files, nowMs) {
+  var list = Array.isArray(files) ? files : []
+  var rows = []
+  for (var i = 0; i < list.length; i++) {
+    var file = list[i] || {}
+    var text = file.text
+    if (typeof text !== "string") {
+      if (text == null) continue
+      text = String(text)
+    }
+    var trimmed = text.replace(/^\s+|\s+$/g, "")
+    if (trimmed.charCodeAt(0) === 0xfeff) trimmed = trimmed.slice(1)
+    if (!trimmed) continue
+    var parsed
+    try { parsed = JSON.parse(trimmed) } catch (e) { continue }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue
+    rows.push(rowFrom(file.path, parsed, nowMs))
+  }
+  rows.sort(function(a, b) {
+    if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp
+    if (a.path < b.path) return 1
+    if (a.path > b.path) return -1
+    return 0
+  })
+  var seen = {}
+  var unique = []
+  for (var j = 0; j < rows.length; j++) {
+    if (seen[rows[j].path]) continue
+    seen[rows[j].path] = true
+    unique.push(rows[j])
+  }
+  return unique
+}
+
+function swipeDecision(dx, width) {
+  var distance = Number(dx)
+  var rowWidth = Number(width)
+  if (!isFinite(distance) || !isFinite(rowWidth) || rowWidth <= 0) return "snap-back"
+  if (distance <= -SWIPE_COMMIT_RATIO * rowWidth) return "commit"
+  return "snap-back"
+}
+
+function decodeUtf8(bytes) {
+  var out = ""
+  var i = 0
+  while (i < bytes.length) {
+    var c = bytes[i] & 255
+    if (c < 0x80) {
+      out += String.fromCharCode(c)
+      i++
+      continue
+    }
+    var need = 0
+    var cp = 0
+    if ((c & 0xe0) === 0xc0) { need = 1; cp = c & 0x1f }
+    else if ((c & 0xf0) === 0xe0) { need = 2; cp = c & 0x0f }
+    else if ((c & 0xf8) === 0xf0) { need = 3; cp = c & 0x07 }
+    else { i++; continue }
+    if (i + need >= bytes.length) break
+    var ok = true
+    for (var j = 1; j <= need; j++) {
+      var next = bytes[i + j] & 255
+      if ((next & 0xc0) !== 0x80) { ok = false; break }
+      cp = (cp << 6) | (next & 0x3f)
+    }
+    if (!ok) { i++; continue }
+    i += need + 1
+    if (cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) continue
+    if (cp < 0x10000) out += String.fromCharCode(cp)
+    else {
+      cp -= 0x10000
+      out += String.fromCharCode(0xd800 + (cp >> 10), 0xdc00 + (cp & 0x3ff))
+    }
+  }
+  return out
+}
+
+function textFromBase64(b64) {
+  var clean = String(b64 || "").replace(/[^A-Za-z0-9+/=]/g, "")
+  if (!clean || clean.length % 4 === 1) return ""
+  var bytes = []
+  for (var i = 0; i < clean.length; i += 4) {
+    var a = B64.indexOf(clean.charAt(i))
+    var b = B64.indexOf(clean.charAt(i + 1))
+    var third = clean.charAt(i + 2)
+    var fourth = clean.charAt(i + 3)
+    var c = third === "=" || !third ? -1 : B64.indexOf(third)
+    var d = fourth === "=" || !fourth ? -1 : B64.indexOf(fourth)
+    if (a < 0 || b < 0 || (third && third !== "=" && c < 0) || (fourth && fourth !== "=" && d < 0)) return ""
+    bytes.push((a << 2) | (b >> 4))
+    if (c >= 0) bytes.push(((b & 15) << 4) | (c >> 2))
+    if (d >= 0) bytes.push(((c & 3) << 6) | d)
+  }
+  return decodeUtf8(bytes)
+}
+
+export { readInbox, swipeDecision, textFromBase64 }

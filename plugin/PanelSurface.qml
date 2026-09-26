@@ -9,6 +9,9 @@ Item {
 
   property var targetScreen: null
   property real uiScale: 1.25
+  property var shell: null
+
+  signal settingsRequested()
 
   readonly property real safeScale: root.uiScale >= 1 && root.uiScale <= 1.4 ? root.uiScale : 1.25
 
@@ -40,6 +43,17 @@ Item {
         origin.y: 0
         xScale: canvas.width > 0 ? panel.width / canvas.width : 1
         yScale: canvas.height > 0 ? panel.height / canvas.height : 1
+      }
+
+      // Meter Bank owns the left and narrows width. Until then this fills the canvas.
+      InboxColumn {
+        id: inbox
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.right: parent.right
+        width: parent.width
+        shell: root.shell
+        onSettingsRequested: root.settingsRequested()
       }
     }
   }
