@@ -16,6 +16,17 @@ Item {
   readonly property bool showBars: root.snapshotStatus === "ok" && root.layout.providers.length > 0
   readonly property bool wide: root.layout.mode === "wide"
 
+  property bool detailOpen: false
+  property string detailShownId: ""
+  property real detailOriginX: 0
+  property real detailProgress: root.detailOpen ? 1 : 0
+  Behavior on detailProgress { NumberAnimation { duration: 340; easing.type: Easing.OutCubic } }
+  readonly property var openDetail: MeterModel.detailFor(root.snapshot === null ? ({ providers: [] }) : root.snapshot, root.detailShownId)
+
+  onShowBarsChanged: if (!root.showBars) root.detailOpen = false
+  onDetailOpenChanged: if (root.detailOpen && !root.openDetail) root.detailOpen = false
+  onOpenDetailChanged: if (root.detailOpen && !root.openDetail) root.detailOpen = false
+
   function levelColor(level) {
     if (level === "danger") return Color.urgent
     if (level === "warn") return root.warnOrange
@@ -69,6 +80,8 @@ Item {
   Row {
     id: cols
     visible: root.showBars
+    opacity: 1 - root.detailProgress
+    scale: 1 - 0.05 * root.detailProgress
     width: parent.width
     height: parent.height
 
@@ -281,9 +294,22 @@ Item {
         MouseArea {
           id: hit
           anchors.fill: parent
+          onClicked: {
+            root.detailOriginX = col.x + col.width / 2
+            root.detailShownId = String(col.modelData.id || "")
+            root.detailOpen = true
+          }
         }
       }
     }
+  }
+
+  Detail {
+    anchors.fill: parent
+    detail: root.openDetail
+    progress: root.detailProgress
+    originX: root.detailOriginX
+    onCloseRequested: root.detailOpen = false
   }
 
   component CountText: Row {
