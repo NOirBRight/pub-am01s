@@ -68,7 +68,11 @@ function iconCandidates(app, appIcon) {
   if (clean.length) {
     add(clean.join(""))
     add(clean.join("-"))
-    if (clean[0] === "omarchy") add("omarchy")
+    // Omarchy's own toasts have no icon. The panel returns to T3 Code.
+    if (clean[0] === "omarchy") {
+      add("t3code")
+      add("t3code-nightly")
+    }
     if (clean.length >= 2) {
       add(clean[0] + clean[1])
       if (clean.length > 2) add(clean[0] + clean[1] + "-" + clean.slice(2).join("-"))
@@ -189,6 +193,7 @@ function focusAddress(clients, note) {
   if (summary.length >= 2) address = addressByTitle(list, summary)
   if (!address && note && note.wmClass) address = addressByApp(list, note.wmClass)
   if (!address && app) address = addressByApp(list, app)
+  if (!address && compactName(app).indexOf("omarchy") === 0) address = addressByApp(list, "t3code")
   return safeAddress(address)
 }
 

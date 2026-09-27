@@ -136,7 +136,11 @@ describe("iconCandidates", () => {
       "t3code-nightly",
     ])
     expect(iconCandidates("WeChat", "wechat")[0]).toBe("wechat")
-    expect(iconCandidates("omarchy-action", "")).toContain("omarchy")
+    expect(iconCandidates("omarchy-action", "")).toContain("t3code")
+    expect(focusAddress([
+      { class: "com.t3tools.T3Code", title: "T3 Code (Nightly)", address: "0x59af9bb330c0" },
+      { class: "dev.tensaku.Tensaku", title: "Tensaku", address: "0x111" },
+    ], { app: "omarchy-action", summary: "Screenshot saved to clipboard and file" })).toBe("0x59af9bb330c0")
   })
 })
 
