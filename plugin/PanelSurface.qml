@@ -25,7 +25,7 @@ Item {
     visible: root.targetScreen !== null
     screen: root.targetScreen
     anchors { top: true; bottom: true; left: true; right: true }
-    color: Color.background
+    color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     exclusiveZone: 0
     focusable: false
@@ -33,6 +33,14 @@ Item {
     WlrLayershell.namespace: "pub-am01s"
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+    Rectangle {
+      anchors.fill: parent
+      gradient: Gradient {
+        GradientStop { position: 0; color: Qt.lighter(Color.background, 1.28) }
+        GradientStop { position: 1; color: Qt.darker(Color.background, 1.45) }
+      }
+    }
 
     // Design canvas is 960×400 divided by UI Scale, then stretched onto the output.
     Item {
@@ -49,9 +57,9 @@ Item {
 
       MeterBank {
         id: meterBank
-        x: 0
-        y: 0
-        height: parent.height
+        x: 10
+        y: 12
+        height: parent.height - 24
         canvasWidth: parent.width
         snapshot: root.snapshot
         snapshotStatus: root.snapshotStatus
@@ -68,6 +76,9 @@ Item {
         anchors.bottom: parent.bottom
         anchors.left: meterBank.right
         anchors.right: parent.right
+        anchors.topMargin: 12
+        anchors.bottomMargin: 12
+        anchors.rightMargin: 10
         shell: root.shell
         onSettingsRequested: root.settingsRequested()
       }

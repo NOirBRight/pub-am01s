@@ -30,10 +30,15 @@ Item {
     return Color.muted
   }
 
+  function hasQuota(detail) {
+    if (!detail || !detail.windows || !detail.windows.length) return false
+    var first = detail.windows[0]
+    return !!first && typeof first.remaining === "number"
+  }
+
   // Recreate the bars once the open is underway so they refill instead of appearing full.
   function syncBars() {
-    var show = root.progress > 0.5 && root.detail && root.detail.failed !== true
-    var windows = show && root.detail.windows ? root.detail.windows : null
+    var windows = root.progress > 0.5 && root.hasQuota(root.detail) ? root.detail.windows : null
     if (!windows) {
       if (root.barWindows.length !== 0) root.barWindows = []
       return
@@ -57,10 +62,21 @@ Item {
     width: Math.max(0, parent.width - 16 - 64)
     height: 40
 
+    ProviderIcon {
+      id: titleIcon
+      anchors.verticalCenter: parent.verticalCenter
+      width: 28
+      height: 28
+      source: root.detail ? Qt.resolvedUrl("icons/" + String(root.detail.id || "") + ".svg") : ""
+      tint: Color.foreground
+    }
+
     Text {
       id: nameText
       anchors.verticalCenter: parent.verticalCenter
-      width: Math.min(implicitWidth, Math.max(0, titleRow.width - (planPill.visible ? planPill.width + 10 : 0)))
+      anchors.left: titleIcon.right
+      anchors.leftMargin: 10
+      width: Math.min(implicitWidth, Math.max(0, titleRow.width - 38 - (planPill.visible ? planPill.width + 10 : 0)))
       text: root.detail ? root.detail.name : ""
       elide: Text.ElideRight
       font.family: Style.font.resolvedFamily
@@ -93,7 +109,20 @@ Item {
   }
 
   Text {
-    visible: root.detail && root.detail.failed === true
+    visible: root.detail && root.detail.failed === true && root.barWindows.length > 0
+    x: 16
+    y: 52
+    width: parent.width - 32
+    elide: Text.ElideRight
+    textFormat: Text.PlainText
+    text: root.detail ? String(root.detail.reason || "") : ""
+    color: Color.urgent
+    font.family: Style.font.resolvedFamily
+    font.pixelSize: 12
+  }
+
+  Text {
+    visible: root.detail && root.detail.failed === true && root.barWindows.length === 0
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.top: parent.top
@@ -119,11 +148,11 @@ Item {
     anchors.right: parent.right
     anchors.top: parent.top
     anchors.bottom: parent.bottom
-    anchors.topMargin: 64
+    anchors.topMargin: root.detail && root.detail.failed === true ? 78 : 64
     anchors.bottomMargin: 12
     anchors.leftMargin: 12
     anchors.rightMargin: 12
-    visible: root.detail && root.detail.failed !== true
+    visible: root.barWindows.length > 0
 
     readonly property int count: root.barWindows ? root.barWindows.length : 0
     readonly property real slotW: count > 0 ? Math.min(170, Math.max(0, width) / count) : 0

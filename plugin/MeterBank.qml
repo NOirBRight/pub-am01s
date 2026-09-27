@@ -93,6 +93,16 @@ Item {
         required property int index
 
         readonly property bool failed: col.modelData.error !== null && col.modelData.error !== undefined && String(col.modelData.error).length > 0
+        // A later 429 still carries the last good windows. Show those bars and only mark the failure.
+        readonly property bool hasQuota: {
+          var windows = col.modelData.windows
+          var count = windows && windows.length ? windows.length : 0
+          for (var i = 0; i < count; i++) {
+            if (typeof windows[i].remaining === "number") return true
+          }
+          return false
+        }
+        readonly property url iconSource: Qt.resolvedUrl("icons/" + String(col.modelData.id || "") + ".svg")
 
         width: col.modelData.width
         height: cols.height
@@ -126,7 +136,7 @@ Item {
           }
 
           Column {
-            visible: col.failed
+            visible: col.failed && !col.hasQuota
             anchors.centerIn: parent
             width: parent.width
             spacing: 6
@@ -163,7 +173,7 @@ Item {
 
           Item {
             anchors.fill: parent
-            visible: root.wide && !col.failed
+            visible: root.wide && col.hasQuota
 
             Row {
               id: head
@@ -172,15 +182,21 @@ Item {
               spacing: 7
               clip: true
 
+              ProviderIcon {
+                width: 18
+                height: 18
+                source: col.iconSource
+                tint: col.failed ? Color.muted : Color.foreground
+              }
               Text {
                 id: nameText
                 text: col.modelData.displayName
-                width: Math.max(0, head.width - (planText.visible ? planText.implicitWidth + head.spacing : 0))
+                width: Math.max(0, head.width - 18 - head.spacing - (planText.visible ? planText.implicitWidth + head.spacing : 0))
                 elide: Text.ElideRight
                 font.family: Style.font.resolvedFamily
                 font.pixelSize: 14
                 font.bold: true
-                color: Color.foreground
+                color: col.failed ? Color.urgent : Color.foreground
               }
               Text {
                 id: planText
@@ -258,7 +274,7 @@ Item {
 
           Item {
             anchors.fill: parent
-            visible: !root.wide && !col.failed
+            visible: !root.wide && col.hasQuota
 
             CountText {
               anchors.horizontalCenter: parent.horizontalCenter
@@ -266,19 +282,29 @@ Item {
               value: col.modelData.windows.length > 0 ? col.modelData.windows[0].remaining : null
               delayMs: col.index * 70 + 120
               size: 20
-              digitColor: Color.foreground
+              digitColor: col.failed ? Color.muted : Color.foreground
             }
             SegBar {
               anchors.horizontalCenter: parent.horizontalCenter
               y: 36
               width: 20
-              height: parent.height - 36 - 28
+              height: parent.height - 36 - 48
               value: col.modelData.windows.length > 0 && col.modelData.windows[0].remaining !== null && col.modelData.windows[0].remaining !== undefined ? col.modelData.windows[0].remaining : 0
               delayMs: col.index * 70 + 120
               litColor: root.levelColor(col.modelData.windows.length > 0 ? col.modelData.windows[0].level : "none")
               pulse: col.modelData.windows.length > 0 && col.modelData.windows[0].level === "danger"
             }
+            ProviderIcon {
+              anchors.horizontalCenter: parent.horizontalCenter
+              anchors.bottom: compactName.top
+              anchors.bottomMargin: 3
+              width: 18
+              height: 18
+              source: col.iconSource
+              tint: col.failed ? Color.muted : Color.foreground
+            }
             Text {
+              id: compactName
               anchors.bottom: parent.bottom
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
@@ -286,7 +312,7 @@ Item {
               text: col.modelData.displayName
               font.family: Style.font.resolvedFamily
               font.pixelSize: 11
-              color: Color.muted
+              color: col.failed ? Color.urgent : Color.muted
             }
           }
         }
