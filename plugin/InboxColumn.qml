@@ -46,6 +46,9 @@ Item {
   property bool focusQueued: false
   property string pendingFocusApp: ""
   property string pendingFocusSummary: ""
+  property string pendingWmClass: ""
+  property string desktopCatalog: ""
+  readonly property var desktopRows: InboxModel.parseDesktopCatalog(desktopCatalog)
   property int pendingFocusSerial: 0
   property int focusSerial: 0
 
@@ -205,15 +208,38 @@ Item {
     Util.execArgv(argv)
   }
 
-  function themeIconUrl(namesText) {
+  function iconSources(namesText, app, filePath, kind) {
+    var urls = []
+    var seen = {}
+    function add(url) {
+      var text = String(url || "")
+      if (!text || seen[text]) return
+      seen[text] = true
+      urls.push(text)
+    }
     var names = String(namesText || "").split("\n")
+    var desktop = InboxModel.matchDesktop(app, root.desktopRows)
+    if (desktop && desktop.icon) names.push(desktop.icon)
+    var home = String(Quickshell.env("HOME") || "")
+    var sizes = ["512x512", "256x256", "128x128", "64x64", "48x48", "32x32"]
     for (var i = 0; i < names.length; i++) {
       var name = names[i]
       if (!name) continue
-      var found = Quickshell.iconPath(name, true)
-      if (found && String(found).length > 0) return String(found)
+      if (name.charAt(0) === "/") {
+        add("file://" + name)
+        continue
+      }
+      var themed = Quickshell.iconPath(name, true)
+      if (themed) add(String(themed))
+      for (var s = 0; s < sizes.length; s++) {
+        if (home) add("file://" + home + "/.local/share/icons/hicolor/" + sizes[s] + "/apps/" + name + ".png")
+        add("file:///usr/share/icons/hicolor/" + sizes[s] + "/apps/" + name + ".png")
+      }
+      add("file:///usr/share/pixmaps/" + name + ".png")
+      add("file:///usr/share/pixmaps/" + name + ".svg")
     }
-    return ""
+    if (kind === "file" && filePath) add("file://" + filePath)
+    return urls
   }
 
   function activate(model) {
@@ -227,6 +253,8 @@ Item {
     root.pendingFocusSerial = root.focusSerial
     root.pendingFocusApp = String(model.app || "")
     root.pendingFocusSummary = String(model.summary || "")
+    var desktop = InboxModel.matchDesktop(model.app, root.desktopRows)
+    root.pendingWmClass = desktop && desktop.wm ? String(desktop.wm) : ""
     if (focusProc.running) {
       root.focusQueued = true
       return
@@ -247,6 +275,7 @@ Item {
     var address = InboxModel.focusAddress(clients, {
       app: root.pendingFocusApp,
       summary: root.pendingFocusSummary,
+      wmClass: root.pendingWmClass,
     })
     if (!address) return
     Quickshell.execDetached([
@@ -362,6 +391,17 @@ Item {
         root.readQueued = false
         Qt.callLater(function() { root.startRead() })
       }
+    }
+  }
+
+  Process {
+    id: desktopProc
+    command: ["python3", "-c", "import pathlib\ndirs=[pathlib.Path.home()/'.local/share/applications', pathlib.Path('/usr/share/applications')]\nfor d in dirs:\n  if not d.is_dir(): continue\n  for f in d.glob('*.desktop'):\n    name=icon=wm=''\n    try: lines=f.read_text(errors='replace').splitlines()\n    except Exception: continue\n    for line in lines:\n      if line.startswith('Name=') and not name: name=line[5:].strip()\n      elif line.startswith('Icon=') and not icon: icon=line[5:].strip()\n      elif line.startswith('StartupWMClass=') and not wm: wm=line.split('=',1)[1].strip()\n    if name: print(name+'\\t'+icon+'\\t'+wm)\n"]
+    running: true
+    stdout: StdioCollector {
+      id: desktopOut
+      waitForEnd: true
+      onStreamFinished: root.desktopCatalog = text
     }
   }
 
@@ -639,15 +679,25 @@ Item {
                 fillMode: Image.PreserveAspectCrop
                 sourceSize.width: 80
                 sourceSize.height: 80
-                source: {
-                  var themed = root.themeIconUrl(note.model.iconNames)
-                  if (themed) return themed
-                  if (note.model.iconKind === "file" && note.model.iconPath)
-                    return Util.fileUrl(note.model.iconPath)
-                  if (note.model.iconKind === "theme-name" && note.model.iconName)
-                    return Quickshell.iconPath(note.model.iconName, true) || ""
-                  return ""
+                property var sources: root.iconSources(note.model.iconNames, note.model.app, note.model.iconPath, note.model.iconKind)
+                property int sourceIndex: 0
+                function useNext() {
+                  var list = sources || []
+                  if (sourceIndex >= list.length) {
+                    source = ""
+                    return
+                  }
+                  source = list[sourceIndex]
                 }
+                onSourcesChanged: {
+                  sourceIndex = 0
+                  useNext()
+                }
+                onStatusChanged: if (status === Image.Error) {
+                  sourceIndex += 1
+                  useNext()
+                }
+                Component.onCompleted: useNext()
               }
             }
 

@@ -186,6 +186,7 @@ function focusAddress(clients, note) {
   var app = oneLine(note && note.app)
   var address = ""
   if (summary.length >= 2) address = addressByTitle(list, summary)
+  if (!address && note && note.wmClass) address = addressByApp(list, note.wmClass)
   if (!address && app) address = addressByApp(list, app)
   return safeAddress(address)
 }
@@ -305,6 +306,58 @@ function textFromBase64(b64) {
     if (d >= 0) bytes.push(((c & 3) << 6) | d)
   }
   return decodeUtf8(bytes)
+}
+
+function compactName(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "")
+}
+
+// Lines are "Name<TAB>Icon<TAB>StartupWMClass" from desktop files.
+export function parseDesktopCatalog(text) {
+  var rows = []
+  var lines = String(text || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var parts = lines[i].split("\t")
+    if (parts.length < 2) continue
+    var name = parts[0].replace(/^\s+|\s+$/g, "")
+    if (!name) continue
+    rows.push({
+      name: name,
+      icon: (parts[1] || "").replace(/^\s+|\s+$/g, ""),
+      wm: (parts[2] || "").replace(/^\s+|\s+$/g, ""),
+    })
+  }
+  return rows
+}
+
+export function matchDesktop(app, rows) {
+  var wanted = compactName(app)
+  if (wanted.length < 3 || !rows || !rows.length) return null
+  var best = null
+  var bestScore = 0
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i]
+    var name = compactName(row && row.name)
+    if (!name) continue
+    var score = 0
+    if (name === wanted) score = 100 + name.length
+    else if (wanted.indexOf(name) === 0 || name.indexOf(wanted) === 0) score = Math.min(name.length, wanted.length)
+    if (score > bestScore) {
+      best = row
+      bestScore = score
+    }
+  }
+  if (bestScore < 4 || !best) return null
+  if (!best.icon) {
+    for (var j = 0; j < rows.length; j++) {
+      var other = rows[j]
+      var otherName = compactName(other && other.name)
+      if (!other || !other.icon || !otherName) continue
+      if (wanted.indexOf(otherName) === 0 || otherName.indexOf(wanted) === 0)
+        return { name: best.name, icon: other.icon, wm: best.wm || other.wm }
+    }
+  }
+  return best
 }
 
 export { focusAddress, iconCandidates, readInbox, swipeDecision, textFromBase64 }

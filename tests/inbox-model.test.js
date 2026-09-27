@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer"
 import { describe, expect, it } from "vitest"
-import { focusAddress, iconCandidates, readInbox, swipeDecision, textFromBase64 } from "../plugin/inbox-model.mjs"
+import { focusAddress, iconCandidates, matchDesktop, parseDesktopCatalog, readInbox, swipeDecision, textFromBase64 } from "../plugin/inbox-model.mjs"
 
 const now = 1790441347328
 
@@ -136,6 +136,23 @@ describe("iconCandidates", () => {
       "t3code-nightly",
     ])
     expect(iconCandidates("WeChat", "wechat")[0]).toBe("wechat")
+  })
+})
+
+describe("desktop icons", () => {
+  const catalog = parseDesktopCatalog([
+    "T3 Code\tt3code\tt3code",
+    "T3 Code (Nightly)\t\tt3code",
+    "WeChat\twechat\twechat",
+  ].join("\n"))
+
+  it("picks the T3 Code icon and window class", () => {
+    expect(matchDesktop("T3 Code", catalog)).toEqual({ name: "T3 Code", icon: "t3code", wm: "t3code" })
+    expect(matchDesktop("T3 Code (Nightly)", catalog).icon).toBe("t3code")
+    expect(focusAddress([
+      { class: "com.t3tools.T3Code", title: "T3 Code (Nightly)", address: "0x59af9bb330c0" },
+      { class: "dev.tensaku.Tensaku", title: "Tensaku", address: "0x111" },
+    ], { app: "T3 Code", summary: "done", wmClass: "t3code" })).toBe("0x59af9bb330c0")
   })
 })
 
