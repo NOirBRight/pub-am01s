@@ -44,7 +44,7 @@ Item {
   readonly property string statusDetail: {
     if (root.snapshotStatus === "needs-update") return "这个面板只认识 Snapshot schemaVersion 1。"
     if (root.snapshotStatus === "unreadable") return "Engine 没有返回可读的 Snapshot。"
-    if (root.snapshotStatus === "no-engine") return "在配置里写 enginePath，或设置 PUB_ENGINE。"
+    if (root.snapshotStatus === "no-engine") return "在配置里写 enginePath，或运行安装脚本钉住 Engine。"
     return ""
   }
 

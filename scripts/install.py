@@ -141,8 +141,9 @@ def output_from_hyprctl() -> str | None:
     return connector_from_monitors(payload)
 
 
-def parse_output(argv: list[str]) -> str | None:
+def parse_args(argv: list[str]) -> tuple[str | None, str | None]:
     output = None
+    url = None
     index = 0
     while index < len(argv):
         arg = argv[index]
@@ -155,10 +156,19 @@ def parse_output(argv: list[str]) -> str | None:
             output = arg.split("=", 1)[1]
             if not output:
                 fail("--output requires a name")
+        elif arg == "--url":
+            index += 1
+            if index >= len(argv) or not argv[index]:
+                fail("--url requires a value")
+            url = argv[index]
+        elif arg.startswith("--url="):
+            url = arg.split("=", 1)[1]
+            if not url:
+                fail("--url requires a value")
         else:
             fail(f"unknown argument: {arg}")
         index += 1
-    return output
+    return output, url
 
 
 def resolve_output(argv_output: str | None) -> str | None:
@@ -323,7 +333,23 @@ def install_output(root: Path, name: str | None) -> None:
     path.write_text(name + "\n", encoding="utf-8")
 
 
+def pin_engine(url: str | None) -> None:
+    script = REPO_ROOT / "scripts" / "pin-engine.py"
+    if not script.is_file():
+        fail(f"missing {script}")
+    chosen = url if url else os.environ.get("PUB_ENGINE_URL", "").strip()
+    command = [sys.executable, str(script)]
+    if chosen:
+        command.extend(["--url", chosen])
+    completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "").strip()
+        fail(detail or "could not pin the engine")
+
+
 def main(argv: list[str]) -> None:
+    output_name, engine_url = parse_args(argv)
+    pin_engine(engine_url)
     root = config_home()
     assert_inside(root, root, follow_leaf=True)
     root.mkdir(parents=True, exist_ok=True)
@@ -332,7 +358,7 @@ def main(argv: list[str]) -> None:
     install_menu(root)
     ensure_symlink(root / "hypr" / "am01s.lua", REPO_ROOT / "hypr" / "am01s.lua", root)
     install_hypr_require(root)
-    install_output(root, resolve_output(parse_output(argv)))
+    install_output(root, resolve_output(output_name))
 
 
 if __name__ == "__main__":
