@@ -65,6 +65,35 @@ describe("readInbox", () => {
     expect(again[0].icon).toEqual(rows[2].icon)
   })
 
+  it("gives Omarchy's own toasts their glyph or the Omarchy mark, not an app", () => {
+    const rows = readInbox([
+      file("/history/shot.json", {
+        app: "omarchy-action",
+        appIcon: "",
+        glyph: "",
+        execArgv: "[\"tensaku-edit\",\"/home/u/Pictures/shot.png\"]",
+        timestamp: now,
+      }),
+      file("/history/plugin.json", {
+        app: "omarchy-action",
+        appIcon: "",
+        glyph: "\u{f0431}",
+        timestamp: now - 1000,
+      }),
+      file("/history/bare.json", { app: "notify-send", timestamp: now - 2000 }),
+      file("/history/omp.json", { app: "omp", timestamp: now - 3000 }),
+    ], now)
+
+    expect(rows.map((row) => row.icon)).toEqual([
+      { kind: "system", names: ["omarchy"] },
+      { kind: "glyph", glyph: "\u{f0431}", names: [] },
+      { kind: "system", names: ["omarchy"] },
+      { kind: "initial", letter: "O", color: expect.stringMatching(/^#[0-9a-f]{6}$/), names: ["omp"] },
+    ])
+    expect(rows.map((row) => row.system)).toEqual([true, true, true, false])
+    expect(rows[0].action).toEqual(["tensaku-edit", "/home/u/Pictures/shot.png"])
+  })
+
   it("flags a notification within 10 minutes as fresh", () => {
     const rows = readInbox([
       file("/history/fresh.json", { app: "a", timestamp: now - 10 * 60 * 1000 }),
@@ -136,11 +165,6 @@ describe("iconCandidates", () => {
       "t3code-nightly",
     ])
     expect(iconCandidates("WeChat", "wechat")[0]).toBe("wechat")
-    expect(iconCandidates("omarchy-action", "")).toContain("t3code")
-    expect(focusAddress([
-      { class: "com.t3tools.T3Code", title: "T3 Code (Nightly)", address: "0x59af9bb330c0" },
-      { class: "dev.tensaku.Tensaku", title: "Tensaku", address: "0x111" },
-    ], { app: "omarchy-action", summary: "Screenshot saved to clipboard and file" })).toBe("0x59af9bb330c0")
   })
 })
 

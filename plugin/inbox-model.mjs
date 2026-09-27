@@ -68,11 +68,6 @@ function iconCandidates(app, appIcon) {
   if (clean.length) {
     add(clean.join(""))
     add(clean.join("-"))
-    // Omarchy's own toasts have no icon. The panel returns to T3 Code.
-    if (clean[0] === "omarchy") {
-      add("t3code")
-      add("t3code-nightly")
-    }
     if (clean.length >= 2) {
       add(clean[0] + clean[1])
       if (clean.length > 2) add(clean[0] + clean[1] + "-" + clean.slice(2).join("-"))
@@ -94,9 +89,21 @@ function filePath(raw) {
   return path.charAt(0) === "/" ? path : ""
 }
 
-function iconFrom(appIcon, app) {
+// Omarchy's own toasts and bare notify-send come from no application. They get
+// their glyph, as on Omarchy's popup card, or the Omarchy mark.
+function systemSender(app) {
+  var name = oneLine(app)
+  return name === "omarchy-action" || name === "notify-send"
+}
+
+function iconFrom(appIcon, app, glyph) {
   var names = iconCandidates(app, appIcon)
   var raw = oneLine(appIcon)
+  if (!raw && systemSender(app)) {
+    var mark = oneLine(glyph)
+    if (mark) return { kind: "glyph", glyph: mark, names: [] }
+    return { kind: "system", names: ["omarchy"] }
+  }
   if (!raw) return initialIcon(app)
   if (raw.indexOf("file://") === 0 || raw.charAt(0) === "/") {
     var path = filePath(raw)
@@ -106,14 +113,6 @@ function iconFrom(appIcon, app) {
   // image:// and other schemes are not theme icons.
   if (raw.indexOf("://") >= 0) return initialIcon(app)
   return { kind: "theme-name", name: names[0] || raw, names: names }
-}
-
-function opensImage(argv) {
-  if (!argv) return false
-  for (var i = 0; i < argv.length; i++) {
-    if (/\.(png|jpe?g|webp|gif|bmp)$/i.test(String(argv[i]))) return true
-  }
-  return false
 }
 
 // execArgv is "" or a JSON argv array. A leading-dash program is not runnable
@@ -141,9 +140,9 @@ function rowFrom(path, entry, nowMs) {
     body: oneLine(entry.body),
     timeLabel: timeLabel(timestamp, nowMs),
     fresh: fresh(timestamp, nowMs),
-    icon: iconFrom(entry.appIcon, entry.app),
+    icon: iconFrom(entry.appIcon, entry.app, entry.glyph),
     action: actionFrom(entry.execArgv),
-    actionOpensImage: opensImage(actionFrom(entry.execArgv)),
+    system: systemSender(entry.app),
     timestamp: timestamp,
   }
 }
@@ -193,7 +192,6 @@ function focusAddress(clients, note) {
   if (summary.length >= 2) address = addressByTitle(list, summary)
   if (!address && note && note.wmClass) address = addressByApp(list, note.wmClass)
   if (!address && app) address = addressByApp(list, app)
-  if (!address && compactName(app).indexOf("omarchy") === 0) address = addressByApp(list, "t3code")
   return safeAddress(address)
 }
 

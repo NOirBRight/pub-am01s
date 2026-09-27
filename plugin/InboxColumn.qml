@@ -108,8 +108,9 @@ Item {
       iconNames: (icon.names || []).join("\n"),
       iconLetter: String(icon.letter || "?"),
       iconColor: String(icon.color || "#509475"),
+      iconGlyph: String(icon.glyph || ""),
       actionJson: row.action ? JSON.stringify(row.action) : "",
-      actionOpensImage: row.actionOpensImage === true
+      system: row.system === true
     }
   }
 
@@ -124,7 +125,8 @@ Item {
       && String(current.iconPath) === next.iconPath
       && String(current.iconName) === next.iconName
       && String(current.iconNames || "") === next.iconNames
-      && (!!current.actionOpensImage) === next.actionOpensImage
+      && String(current.iconGlyph || "") === next.iconGlyph
+      && (!!current.system) === next.system
       && String(current.iconLetter) === next.iconLetter
       && String(current.iconColor) === next.iconColor
       && String(current.actionJson || "") === next.actionJson
@@ -218,8 +220,11 @@ Item {
       urls.push(text)
     }
     var names = String(namesText || "").split("\n")
-    var desktop = InboxModel.matchDesktop(app, root.desktopRows)
-    if (desktop && desktop.icon) names.push(desktop.icon)
+    // A system toast is not an app; do not borrow a desktop entry's icon.
+    if (kind !== "system" && kind !== "glyph") {
+      var desktop = InboxModel.matchDesktop(app, root.desktopRows)
+      if (desktop && desktop.icon) names.push(desktop.icon)
+    }
     var home = String(Quickshell.env("HOME") || "")
     var sizes = ["512x512", "256x256", "128x128", "64x64", "48x48", "32x32"]
     for (var i = 0; i < names.length; i++) {
@@ -244,11 +249,12 @@ Item {
 
   function activate(model) {
     if (!model) return
-    // A picture command, such as tensaku-edit on a screenshot, is not the app.
-    if (model.actionJson && model.actionOpensImage !== true) {
+    if (model.actionJson) {
       root.openAction(model.actionJson)
       return
     }
+    // A system toast has no window of its own.
+    if (model.system) return
     root.focusSerial += 1
     root.pendingFocusSerial = root.focusSerial
     root.pendingFocusApp = String(model.app || "")
@@ -663,6 +669,7 @@ Item {
                 anchors.centerIn: parent
                 visible: noteIcon.status !== Image.Ready
                 text: {
+                  if (note.model.iconKind === "glyph") return note.model.iconGlyph
                   if (note.model.iconKind === "initial" && note.model.iconLetter) return note.model.iconLetter
                   var app = String(note.model.app || "")
                   return app.length > 0 ? app.charAt(0).toUpperCase() : "?"
