@@ -68,6 +68,7 @@ function iconCandidates(app, appIcon) {
   if (clean.length) {
     add(clean.join(""))
     add(clean.join("-"))
+    if (clean[0] === "omarchy") add("omarchy")
     if (clean.length >= 2) {
       add(clean[0] + clean[1])
       if (clean.length > 2) add(clean[0] + clean[1] + "-" + clean.slice(2).join("-"))

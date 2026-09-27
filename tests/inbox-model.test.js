@@ -136,6 +136,7 @@ describe("iconCandidates", () => {
       "t3code-nightly",
     ])
     expect(iconCandidates("WeChat", "wechat")[0]).toBe("wechat")
+    expect(iconCandidates("omarchy-action", "")).toContain("omarchy")
   })
 })
 
