@@ -46,7 +46,6 @@ Item {
   property bool focusQueued: false
   property string pendingFocusApp: ""
   property string pendingFocusSummary: ""
-  property string pendingActionJson: ""
   property int pendingFocusSerial: 0
   property int focusSerial: 0
 
@@ -219,12 +218,11 @@ Item {
 
   function activate(model) {
     if (!model) return
-    var opensImage = model.actionOpensImage === true
-    if (model.actionJson && !opensImage) {
+    // A picture command, such as tensaku-edit on a screenshot, is not the app.
+    if (model.actionJson && model.actionOpensImage !== true) {
       root.openAction(model.actionJson)
       return
     }
-    root.pendingActionJson = opensImage ? String(model.actionJson || "") : ""
     root.focusSerial += 1
     root.pendingFocusSerial = root.focusSerial
     root.pendingFocusApp = String(model.app || "")
@@ -250,10 +248,7 @@ Item {
       app: root.pendingFocusApp,
       summary: root.pendingFocusSummary,
     })
-    if (!address) {
-      if (root.pendingActionJson) root.openAction(root.pendingActionJson)
-      return
-    }
+    if (!address) return
     Quickshell.execDetached([
       "hyprctl", "dispatch",
       "hl.dsp.focus({ window = \"address:" + address + "\" })",
