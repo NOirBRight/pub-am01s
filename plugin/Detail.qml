@@ -182,14 +182,14 @@ Item {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 44
+            height: 28
 
             CountText {
               anchors.horizontalCenter: parent.horizontalCenter
               anchors.bottom: parent.bottom
               value: slot.modelData.remaining
               delayMs: slot.index * 80
-              size: slot.modelData.primary ? 34 : 28
+              size: 22
               digitColor: slot.modelData.primary ? Color.foreground : Color.muted
             }
           }
@@ -199,27 +199,31 @@ Item {
             anchors.bottom: parent.bottom
             anchors.left: parent.left
             anchors.right: parent.right
-            spacing: 3
+            spacing: 2
 
             Text {
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
-              wrapMode: Text.Wrap
+              elide: Text.ElideRight
+              wrapMode: Text.NoWrap
+              maximumLineCount: 1
               textFormat: Text.PlainText
               text: slot.modelData.label
               font.family: Style.font.resolvedFamily
-              font.pixelSize: slot.modelData.primary ? 18 : 16
+              font.pixelSize: 13
               font.bold: false
               color: slot.modelData.primary ? Color.foreground : Color.muted
             }
             Text {
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
-              wrapMode: Text.Wrap
+              elide: Text.ElideRight
+              wrapMode: Text.NoWrap
+              maximumLineCount: 1
               textFormat: Text.PlainText
               text: slot.modelData.resetLabel
               font.family: Style.font.resolvedFamily
-              font.pixelSize: 15
+              font.pixelSize: 12
               color: slot.modelData.primary ? Color.foreground : Color.muted
             }
           }
