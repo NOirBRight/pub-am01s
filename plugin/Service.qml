@@ -50,6 +50,8 @@ Item {
   property bool snapshotAfterSettings: false
 
   readonly property var settingsView: SettingsModel.presentSettings(catalogDoc, settingsDoc, snapshot)
+  // Catalog login fields only. The plugin has no login table of its own.
+  readonly property var overlayProviders: SettingsModel.withLogin(settingsView.providers, catalogDoc, snapshot)
   readonly property string settingsMessage: {
     if (root.resolvedEngine().length === 0 || root.settingsStatus === "no-engine")
       return "Engine is not configured"
@@ -448,7 +450,8 @@ Item {
     var item = settingsLoader.item
     if (!item) return
     item.targetScreen = Qt.binding(function() { return root.overlayScreen })
-    item.providers = Qt.binding(function() { return root.settingsView.providers })
+    item.providers = Qt.binding(function() { return root.overlayProviders })
+    item.enginePath = Qt.binding(function() { return root.resolvedEngine() })
     item.remainingMode = Qt.binding(function() { return root.settingsView.remainingMode === true })
     item.status = Qt.binding(function() { return root.settingsStatus })
     item.message = Qt.binding(function() { return root.settingsMessage })
@@ -560,6 +563,7 @@ Item {
     function onCloseRequested() { root.closeSettings() }
     function onEnabledToggled(id, enabled) { root.queueEnabled(id, enabled) }
     function onRemainingModeToggled(remainingMode) { root.queueRemainingMode(remainingMode) }
+    function onLoginChanged() { root.refreshAfterSettings() }
   }
 
   Process {
