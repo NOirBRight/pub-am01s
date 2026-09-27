@@ -485,6 +485,7 @@ Item {
     item.targetScreen = Qt.binding(function() { return root.overlayScreen })
     item.providers = Qt.binding(function() { return root.overlayProviders })
     item.enginePath = Qt.binding(function() { return root.resolvedEngine() })
+    item.engineLead = Qt.binding(function() { return root.engineCommand([]) })
     item.remainingMode = Qt.binding(function() { return root.settingsView.remainingMode === true })
     item.status = Qt.binding(function() { return root.settingsStatus })
     item.message = Qt.binding(function() { return root.settingsMessage })

@@ -16,6 +16,8 @@ Item {
   property string status: ""
   property string message: ""
   property string enginePath: ""
+  // ["node", pinned.mjs] or [configured engine]. Credentials must use this, not the path alone.
+  property var engineLead: []
 
   signal closeRequested()
   signal enabledToggled(string id, bool enabled)
@@ -246,13 +248,15 @@ Item {
 
   // Secret is pendingSecret until the process starts, then stdin. Never argv.
   function runCredentials(argv, secret, kind) {
-    var bin = root.trimText(root.enginePath)
-    if (!bin.length) {
+    var lead = root.engineLead
+    var leadCount = lead && lead.length ? lead.length : 0
+    if (leadCount === 0) {
       root.note("Engine is not configured", true)
       return
     }
     if (root.credActive || credProc.running) return
-    var command = [bin]
+    var command = []
+    for (var j = 0; j < leadCount; j++) command.push(String(lead[j]))
     for (var i = 0; i < argv.length; i++) command.push(String(argv[i]))
     var body = String(secret || "")
     root.credGeneration += 1
