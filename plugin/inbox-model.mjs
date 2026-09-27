@@ -47,7 +47,33 @@ function initialIcon(app) {
     kind: "initial",
     letter: initialLetter(name),
     color: INITIAL_COLORS[hash % INITIAL_COLORS.length],
+    names: iconCandidates(app, ""),
   }
+}
+
+// Desktop icon names for this app. "T3 Code (Nightly)" yields t3code, which is
+// the Icon= in the desktop file. The notification's content image is not an icon.
+function iconCandidates(app, appIcon) {
+  var names = []
+  function add(name) {
+    var text = String(name || "").replace(/^\s+|\s+$/g, "")
+    if (!text || names.indexOf(text) >= 0) return
+    names.push(text)
+  }
+  var raw = oneLine(appIcon)
+  if (raw && raw.indexOf("://") < 0 && raw.charAt(0) !== "/") add(raw)
+  var words = oneLine(app).toLowerCase().split(/[^a-z0-9]+/)
+  var clean = []
+  for (var i = 0; i < words.length; i++) if (words[i]) clean.push(words[i])
+  if (clean.length) {
+    add(clean.join(""))
+    add(clean.join("-"))
+    if (clean.length >= 2) {
+      add(clean[0] + clean[1])
+      if (clean.length > 2) add(clean[0] + clean[1] + "-" + clean.slice(2).join("-"))
+    }
+  }
+  return names
 }
 
 function filePath(raw) {
@@ -64,15 +90,25 @@ function filePath(raw) {
 }
 
 function iconFrom(appIcon, app) {
+  var names = iconCandidates(app, appIcon)
   var raw = oneLine(appIcon)
   if (!raw) return initialIcon(app)
   if (raw.indexOf("file://") === 0 || raw.charAt(0) === "/") {
     var path = filePath(raw)
-    return path ? { kind: "file", path: path } : initialIcon(app)
+    if (!path) return initialIcon(app)
+    return { kind: "file", path: path, names: names }
   }
   // image:// and other schemes are not theme icons.
   if (raw.indexOf("://") >= 0) return initialIcon(app)
-  return { kind: "theme-name", name: raw }
+  return { kind: "theme-name", name: names[0] || raw, names: names }
+}
+
+function opensImage(argv) {
+  if (!argv) return false
+  for (var i = 0; i < argv.length; i++) {
+    if (/\.(png|jpe?g|webp|gif|bmp)$/i.test(String(argv[i]))) return true
+  }
+  return false
 }
 
 // execArgv is "" or a JSON argv array. A leading-dash program is not runnable
@@ -102,6 +138,7 @@ function rowFrom(path, entry, nowMs) {
     fresh: fresh(timestamp, nowMs),
     icon: iconFrom(entry.appIcon, entry.app),
     action: actionFrom(entry.execArgv),
+    actionOpensImage: opensImage(actionFrom(entry.execArgv)),
     timestamp: timestamp,
   }
 }
@@ -270,4 +307,4 @@ function textFromBase64(b64) {
   return decodeUtf8(bytes)
 }
 
-export { focusAddress, readInbox, swipeDecision, textFromBase64 }
+export { focusAddress, iconCandidates, readInbox, swipeDecision, textFromBase64 }

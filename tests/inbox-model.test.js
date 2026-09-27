@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer"
 import { describe, expect, it } from "vitest"
-import { focusAddress, readInbox, swipeDecision, textFromBase64 } from "../plugin/inbox-model.mjs"
+import { focusAddress, iconCandidates, readInbox, swipeDecision, textFromBase64 } from "../plugin/inbox-model.mjs"
 
 const now = 1790441347328
 
@@ -55,9 +55,9 @@ describe("readInbox", () => {
     ], now)
 
     expect(rows.map((row) => row.icon)).toEqual([
-      { kind: "file", path: "/tmp/a b.png" },
-      { kind: "theme-name", name: "grok-bot" },
-      { kind: "initial", letter: "O", color: expect.stringMatching(/^#[0-9a-f]{6}$/) },
+      { kind: "file", path: "/tmp/a b.png", names: ["feishu"] },
+      { kind: "theme-name", name: "grok-bot", names: ["grok-bot", "grokbot"] },
+      { kind: "initial", letter: "O", color: expect.stringMatching(/^#[0-9a-f]{6}$/), names: ["omp"] },
     ])
     const again = readInbox([
       file("/history/initial.json", { app: "omp", appIcon: "", timestamp: now }),
@@ -123,6 +123,19 @@ describe("readInbox", () => {
     expect(decoded).toBe(text)
     expect(rows[0].summary).toBe("群")
     expect(rows[0].body).toBe(body)
+  })
+})
+
+describe("iconCandidates", () => {
+  it("uses the desktop icon name for T3 Code, not a content picture", () => {
+    expect(iconCandidates("T3 Code", "")).toEqual(["t3code", "t3-code"])
+    expect(iconCandidates("T3 Code (Nightly)", "")).toEqual([
+      "t3codenightly",
+      "t3-code-nightly",
+      "t3code",
+      "t3code-nightly",
+    ])
+    expect(iconCandidates("WeChat", "wechat")[0]).toBe("wechat")
   })
 })
 

@@ -46,6 +46,7 @@ Item {
   property bool focusQueued: false
   property string pendingFocusApp: ""
   property string pendingFocusSummary: ""
+  property string pendingActionJson: ""
   property int pendingFocusSerial: 0
   property int focusSerial: 0
 
@@ -102,9 +103,11 @@ Item {
       iconKind: String(icon.kind || "initial"),
       iconPath: String(icon.path || ""),
       iconName: String(icon.name || ""),
+      iconNames: (icon.names || []).join("\n"),
       iconLetter: String(icon.letter || "?"),
       iconColor: String(icon.color || "#509475"),
-      actionJson: row.action ? JSON.stringify(row.action) : ""
+      actionJson: row.action ? JSON.stringify(row.action) : "",
+      actionOpensImage: row.actionOpensImage === true
     }
   }
 
@@ -118,6 +121,8 @@ Item {
       && String(current.iconKind) === next.iconKind
       && String(current.iconPath) === next.iconPath
       && String(current.iconName) === next.iconName
+      && String(current.iconNames || "") === next.iconNames
+      && (!!current.actionOpensImage) === next.actionOpensImage
       && String(current.iconLetter) === next.iconLetter
       && String(current.iconColor) === next.iconColor
       && String(current.actionJson || "") === next.actionJson
@@ -201,12 +206,25 @@ Item {
     Util.execArgv(argv)
   }
 
+  function themeIconUrl(namesText) {
+    var names = String(namesText || "").split("\n")
+    for (var i = 0; i < names.length; i++) {
+      var name = names[i]
+      if (!name) continue
+      var found = Quickshell.iconPath(name, true)
+      if (found && String(found).length > 0) return String(found)
+    }
+    return ""
+  }
+
   function activate(model) {
     if (!model) return
-    if (model.actionJson) {
+    var opensImage = model.actionOpensImage === true
+    if (model.actionJson && !opensImage) {
       root.openAction(model.actionJson)
       return
     }
+    root.pendingActionJson = opensImage ? String(model.actionJson || "") : ""
     root.focusSerial += 1
     root.pendingFocusSerial = root.focusSerial
     root.pendingFocusApp = String(model.app || "")
@@ -232,7 +250,10 @@ Item {
       app: root.pendingFocusApp,
       summary: root.pendingFocusSummary,
     })
-    if (!address) return
+    if (!address) {
+      if (root.pendingActionJson) root.openAction(root.pendingActionJson)
+      return
+    }
     Quickshell.execDetached([
       "hyprctl", "dispatch",
       "hl.dsp.focus({ window = \"address:" + address + "\" })",
@@ -366,6 +387,8 @@ Item {
       height: 38
 
       Row {
+        anchors.left: parent.left
+        anchors.leftMargin: 8
         anchors.verticalCenter: parent.verticalCenter
         spacing: 8
         Text {
@@ -622,6 +645,8 @@ Item {
                 sourceSize.width: 80
                 sourceSize.height: 80
                 source: {
+                  var themed = root.themeIconUrl(note.model.iconNames)
+                  if (themed) return themed
                   if (note.model.iconKind === "file" && note.model.iconPath)
                     return Util.fileUrl(note.model.iconPath)
                   if (note.model.iconKind === "theme-name" && note.model.iconName)
