@@ -111,10 +111,45 @@ Item {
     if (root.componentReady) root.ensureSnapshot()
   }
 
-  // Config enginePath wins. Otherwise PUB_ENGINE. Never guess a binary.
+  // file:// URL from this plugin document, as a filesystem path.
+  function localPath(value) {
+    var text = String(value || "")
+    if (text.indexOf("file://") === 0) {
+      text = text.slice(7)
+      if (text.indexOf("localhost/") === 0)
+        text = text.slice("localhost".length)
+      try {
+        text = decodeURIComponent(text)
+      } catch (e) {}
+    }
+    return text
+  }
+
+  // Pinned asset lives next to this file: plugin/bin/pub-engine.mjs.
+  function pinnedEngine() {
+    return root.localPath(Qt.resolvedUrl("bin/pub-engine.mjs"))
+  }
+
+  // Config enginePath wins. Otherwise the pinned file beside this plugin.
   function resolvedEngine() {
     if (root.enginePath.length > 0) return root.enginePath
-    return String(Quickshell.env("PUB_ENGINE") || "").replace(/^\s+|\s+$/g, "")
+    return root.pinnedEngine()
+  }
+
+  // enginePath is executed as given. The pinned asset is an ES module, so Node runs it.
+  function engineCommand(args) {
+    var command = []
+    if (root.enginePath.length > 0)
+      command.push(root.enginePath)
+    else {
+      command.push("node")
+      command.push(root.pinnedEngine())
+    }
+    var list = args || []
+    var count = list.length ? list.length : 0
+    for (var i = 0; i < count; i++)
+      command.push(String(list[i]))
+    return command
   }
 
   function ensureSnapshot() {
@@ -138,7 +173,7 @@ Item {
       return
     }
     if (engineProc.running || root.engineActive) return
-    engineProc.command = [bin, "snapshot"]
+    engineProc.command = root.engineCommand(["snapshot"])
     root.engineActive = true
     if (root.snapshotStatus !== "ok") root.snapshotStatus = "pending"
     engineProc.running = true
@@ -258,20 +293,18 @@ Item {
       return
     }
     var argv = root.commandFor(job)
-    var command = [bin]
     var argc = argv && argv.length ? argv.length : 0
     if (argc === 0) {
       root.pumpJobs()
       return
     }
-    for (var i = 0; i < argc; i++) command.push(String(argv[i]))
     root.activeGeneration += 1
     root.activeJob = JSON.stringify(job || {})
     root.settingsStdoutText = ""
     root.settingsStderrText = ""
     root.settingsActive = true
     settingsFailTimer.stop()
-    settingsProc.command = command
+    settingsProc.command = root.engineCommand(argv)
     settingsProc.running = true
   }
 
