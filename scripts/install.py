@@ -13,6 +13,15 @@ from pathlib import Path
 PLUGIN_ID = "noirbright.pub-am01s"
 PLUGIN_ENTRY = {"id": PLUGIN_ID}
 REQUIRE_LINE = 'require("hypr.am01s")'
+SETUP_PUB_KEY = "setup.pub"
+SETUP_PUB_ENTRY = {
+    "icon": "󰔡",
+    "label": "PUB 设置",
+    "action": (
+        'mkdir -p "${XDG_RUNTIME_DIR:-$HOME/.cache}/pub-am01s" && '
+        'touch "${XDG_RUNTIME_DIR:-$HOME/.cache}/pub-am01s/open-settings"'
+    ),
+}
 DESCRIPTION = "ChangHong Electric Co.Ltd 0x0030"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -207,6 +216,104 @@ def install_hypr_require(root: Path) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def strip_jsonc(text: str) -> str:
+    # Omarchy menu files allow // comments, block comments, and trailing commas.
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    out: list[str] = []
+    index = 0
+    length = len(text)
+    in_string = False
+    escape = False
+    while index < length:
+        char = text[index]
+        if in_string:
+            out.append(char)
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+        if char == '"':
+            in_string = True
+            out.append(char)
+            index += 1
+            continue
+        if char == "/" and index + 1 < length and text[index + 1] == "/":
+            index += 2
+            while index < length and text[index] not in "\r\n":
+                index += 1
+            continue
+        if char == "/" and index + 1 < length and text[index + 1] == "*":
+            index += 2
+            while index + 1 < length and not (text[index] == "*" and text[index + 1] == "/"):
+                index += 1
+            index = min(length, index + 2)
+            continue
+        out.append(char)
+        index += 1
+    raw = "".join(out)
+    cleaned: list[str] = []
+    index = 0
+    length = len(raw)
+    in_string = False
+    escape = False
+    while index < length:
+        char = raw[index]
+        if in_string:
+            cleaned.append(char)
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+        if char == '"':
+            in_string = True
+            cleaned.append(char)
+            index += 1
+            continue
+        if char == ",":
+            look = index + 1
+            while look < length and raw[look] in " \t\r\n":
+                look += 1
+            if look < length and raw[look] in "}]":
+                index += 1
+                continue
+        cleaned.append(char)
+        index += 1
+    return "".join(cleaned)
+
+
+def load_menu(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    raw = path.read_text(encoding="utf-8")
+    if not raw.strip():
+        return {}
+    try:
+        data = json.loads(strip_jsonc(raw))
+    except json.JSONDecodeError as exc:
+        fail(f"{path} is not valid JSON: {exc}")
+    if not isinstance(data, dict):
+        fail(f"{path} must be a JSON object")
+    return data
+
+
+def install_menu(root: Path) -> None:
+    path = root / "omarchy" / "extensions" / "omarchy-menu.jsonc"
+    assert_inside(root, path, follow_leaf=True)
+    data = load_menu(path)
+    data[SETUP_PUB_KEY] = dict(SETUP_PUB_ENTRY)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
 def install_output(root: Path, name: str | None) -> None:
     if not name:
         return
@@ -222,6 +329,7 @@ def main(argv: list[str]) -> None:
     root.mkdir(parents=True, exist_ok=True)
     ensure_symlink(root / "omarchy" / "plugins" / PLUGIN_ID, REPO_ROOT / "plugin", root)
     install_shell_json(root)
+    install_menu(root)
     ensure_symlink(root / "hypr" / "am01s.lua", REPO_ROOT / "hypr" / "am01s.lua", root)
     install_hypr_require(root)
     install_output(root, resolve_output(parse_output(argv)))

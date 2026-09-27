@@ -5,6 +5,7 @@ import Quickshell.Wayland
 import QtQuick
 import qs.Commons
 import "meter-model.mjs" as MeterModel
+import "settings-model.mjs" as SettingsModel
 
 // AM01S panel. No screen match means no PanelWindow and no error.
 Item {
@@ -30,6 +31,41 @@ Item {
   property bool componentReady: false
   property bool configReady: false
   property string engineOutput: ""
+
+  property bool settingsOpen: false
+  property var overlayScreen: null
+  property var catalogDoc: null
+  property var settingsDoc: null
+  property string settingsStatus: ""
+  property string settingsError: ""
+  property bool catalogFresh: false
+  property bool settingsFresh: false
+  property string jobQueue: "[]"
+  property string activeJob: ""
+  property int activeGeneration: 0
+  property bool settingsActive: false
+  property string settingsStdoutText: ""
+  property string settingsStderrText: ""
+  property bool consumingSignal: false
+  property bool snapshotAfterSettings: false
+
+  readonly property var settingsView: SettingsModel.presentSettings(catalogDoc, settingsDoc, snapshot)
+  readonly property string settingsMessage: {
+    if (root.resolvedEngine().length === 0 || root.settingsStatus === "no-engine")
+      return "Engine is not configured"
+    if (root.settingsStatus === "error")
+      return root.settingsError.length > 0 ? root.settingsError : "Engine 没有返回设置"
+    if (root.settingsStatus !== "ok") return "读取中"
+    return root.settingsError
+  }
+  // Menu touch file. Runtime dir when set, otherwise the user cache.
+  readonly property string settingsSignalPath: {
+    var runtime = String(Quickshell.env("XDG_RUNTIME_DIR") || "").replace(/^\s+|\s+$/g, "").replace(/\/+$/g, "")
+    if (runtime.length > 0) return runtime + "/pub-am01s/open-settings"
+    var home = String(Quickshell.env("HOME") || "").replace(/^\s+|\s+$/g, "").replace(/\/+$/g, "")
+    if (home.length === 0) return ""
+    return home + "/.cache/pub-am01s/open-settings"
+  }
 
   // ADR 0004: the next snapshot starts five minutes after the previous run ends.
   readonly property int snapshotCooldownMs: 5 * 60 * 1000
@@ -184,6 +220,265 @@ Item {
     panelLoader.item.snapshotStatus = Qt.binding(function() { return root.snapshotStatus })
   }
 
+  function readJobs() {
+    try {
+      var jobs = JSON.parse(root.jobQueue)
+      if (Array.isArray(jobs)) return jobs
+    } catch (e) {}
+    return []
+  }
+
+  function commandFor(job) {
+    if (!job) return []
+    if (job.kind === "catalog") return SettingsModel.catalogCommand()
+    if (job.kind === "settings") return SettingsModel.settingsCommand()
+    if (job.field === "enabled") return SettingsModel.enabledCommand(job.id, job.enabled === true)
+    if (job.field === "remaining-mode") return SettingsModel.remainingModeCommand(job.remainingMode === true)
+    return []
+  }
+
+  function enqueueJob(job) {
+    var jobs = root.readJobs()
+    jobs.push(job)
+    root.jobQueue = JSON.stringify(jobs)
+    Qt.callLater(function() { root.pumpJobs() })
+  }
+
+  function pumpJobs() {
+    if (root.settingsActive || settingsProc.running) return
+    var jobs = root.readJobs()
+    if (jobs.length === 0) return
+    var job = jobs.shift()
+    root.jobQueue = JSON.stringify(jobs)
+    var bin = root.resolvedEngine()
+    if (bin.length === 0) {
+      root.jobQueue = "[]"
+      root.settingsStatus = "no-engine"
+      root.settingsError = ""
+      return
+    }
+    var argv = root.commandFor(job)
+    var command = [bin]
+    var argc = argv && argv.length ? argv.length : 0
+    if (argc === 0) {
+      root.pumpJobs()
+      return
+    }
+    for (var i = 0; i < argc; i++) command.push(String(argv[i]))
+    root.activeGeneration += 1
+    root.activeJob = JSON.stringify(job || {})
+    root.settingsStdoutText = ""
+    root.settingsStderrText = ""
+    root.settingsActive = true
+    settingsFailTimer.stop()
+    settingsProc.command = command
+    settingsProc.running = true
+  }
+
+  function engineError(text, fallback) {
+    var trimmed = String(text || "").replace(/^\s+|\s+$/g, "")
+    if (trimmed.length > 240) trimmed = trimmed.slice(0, 240)
+    return trimmed.length > 0 ? trimmed : fallback
+  }
+
+  function markReady() {
+    if (!root.catalogFresh || !root.settingsFresh) return
+    root.settingsStatus = "ok"
+    root.settingsError = ""
+  }
+
+  function acceptCatalog(ok, out, err) {
+    if (!ok) {
+      root.catalogFresh = false
+      root.settingsStatus = "error"
+      root.settingsError = root.engineError(err, "catalog 失败")
+      return
+    }
+    var parsed = SettingsModel.parseDocument(out)
+    if (!parsed || parsed.ok !== true) {
+      root.catalogFresh = false
+      root.settingsStatus = "error"
+      root.settingsError = "无法读取 catalog"
+      return
+    }
+    root.catalogDoc = parsed.value
+    root.catalogFresh = true
+    root.markReady()
+  }
+
+  function acceptSettings(ok, out, err) {
+    if (!ok) {
+      root.settingsFresh = false
+      root.settingsStatus = "error"
+      root.settingsError = root.engineError(err, "settings 失败")
+      return
+    }
+    var parsed = SettingsModel.parseDocument(out)
+    if (!parsed || parsed.ok !== true) {
+      root.settingsFresh = false
+      root.settingsStatus = "error"
+      root.settingsError = "无法读取 settings"
+      return
+    }
+    root.settingsDoc = parsed.value
+    root.settingsFresh = true
+    root.markReady()
+  }
+
+  function acceptSet(ok, err) {
+    var job = {}
+    try { job = JSON.parse(root.activeJob || "{}") } catch (e) { job = {} }
+    if (!ok) {
+      root.settingsError = root.engineError(err, "设置没有写入")
+      root.enqueueJob({ kind: "settings" })
+      return
+    }
+    if (job.field === "enabled")
+      root.settingsDoc = SettingsModel.withEnabled(root.settingsDoc, job.id, job.enabled === true)
+    else if (job.field === "remaining-mode")
+      root.settingsDoc = SettingsModel.withRemainingMode(root.settingsDoc, job.remainingMode === true)
+    root.settingsError = ""
+    if (root.catalogDoc && root.settingsDoc) {
+      root.catalogFresh = true
+      root.settingsFresh = true
+      root.settingsStatus = "ok"
+    }
+    root.refreshAfterSettings()
+  }
+
+  function finishSettingsJob(generation, exitCode, out, err) {
+    if (generation !== root.activeGeneration || !root.settingsActive) return
+    settingsFailTimer.stop()
+    root.settingsActive = false
+    var job = {}
+    try { job = JSON.parse(root.activeJob || "{}") } catch (e) { job = {} }
+    var ok = Number(exitCode) === 0
+    var kind = String(job.kind || "")
+    if (kind === "catalog") root.acceptCatalog(ok, out, err)
+    else if (kind === "settings") root.acceptSettings(ok, out, err)
+    else if (kind === "set") root.acceptSet(ok, err)
+    Qt.callLater(function() { root.pumpJobs() })
+  }
+
+  function primeSettings() {
+    if (root.resolvedEngine().length === 0) {
+      root.jobQueue = "[]"
+      root.settingsStatus = "no-engine"
+      root.settingsError = ""
+      root.catalogFresh = false
+      root.settingsFresh = false
+      return
+    }
+    root.catalogFresh = false
+    root.settingsFresh = false
+    if (root.settingsStatus !== "ok") root.settingsStatus = "loading"
+    root.enqueueJob({ kind: "catalog" })
+    root.enqueueJob({ kind: "settings" })
+  }
+
+  function queueEnabled(id, enabled) {
+    if (root.resolvedEngine().length === 0) return
+    var on = enabled === true
+    root.settingsDoc = SettingsModel.withEnabled(root.settingsDoc, id, on)
+    root.enqueueJob({
+      kind: "set",
+      field: "enabled",
+      id: String(id),
+      enabled: on,
+    })
+  }
+
+  function queueRemainingMode(remainingMode) {
+    if (root.resolvedEngine().length === 0) return
+    var on = remainingMode === true
+    if (SettingsModel.remainingModeOf(root.settingsDoc) === on) return
+    root.settingsDoc = SettingsModel.withRemainingMode(root.settingsDoc, on)
+    root.enqueueJob({
+      kind: "set",
+      field: "remaining-mode",
+      remainingMode: on,
+    })
+  }
+
+  // Focused output, skipping the AM01S. Null when no other screen exists.
+  function pickOverlayScreen() {
+    var screens = Quickshell.screens || []
+    var focusedName = ""
+    try {
+      var monitor = Hyprland.focusedMonitor
+      if (monitor) focusedName = String(monitor.name || "")
+    } catch (e) {
+      focusedName = ""
+    }
+    var fallback = null
+    for (var i = 0; i < screens.length; i++) {
+      var screen = screens[i]
+      if (!screen || screen === root.panelScreen) continue
+      if (!fallback) fallback = screen
+      if (focusedName.length > 0 && String(screen.name || "") === focusedName) return screen
+    }
+    return fallback
+  }
+
+  function ensureOverlayScreen() {
+    if (!root.settingsOpen) return
+    var screens = Quickshell.screens || []
+    var currentOk = false
+    if (root.overlayScreen && root.overlayScreen !== root.panelScreen) {
+      for (var i = 0; i < screens.length; i++) {
+        if (screens[i] === root.overlayScreen) currentOk = true
+      }
+    }
+    if (currentOk) return
+    root.overlayScreen = root.pickOverlayScreen()
+  }
+
+  function openSettings() {
+    root.settingsOpen = true
+    root.overlayScreen = root.pickOverlayScreen()
+    root.ensureOverlayScreen()
+    root.primeSettings()
+  }
+
+  function closeSettings() {
+    root.settingsOpen = false
+  }
+
+  function pushSettingsOverlay() {
+    var item = settingsLoader.item
+    if (!item) return
+    item.targetScreen = Qt.binding(function() { return root.overlayScreen })
+    item.providers = Qt.binding(function() { return root.settingsView.providers })
+    item.remainingMode = Qt.binding(function() { return root.settingsView.remainingMode === true })
+    item.status = Qt.binding(function() { return root.settingsStatus })
+    item.message = Qt.binding(function() { return root.settingsMessage })
+  }
+
+  function refreshAfterSettings() {
+    if (engineProc.running || root.engineActive) {
+      root.snapshotAfterSettings = true
+      return
+    }
+    root.snapshotAfterSettings = false
+    cooldown.stop()
+    root.startSnapshot()
+  }
+
+  function pollSettingsSignal() {
+    if (root.settingsSignalPath.length === 0 || root.consumingSignal) return
+    if (settingsProbe.running || signalClear.running) return
+    settingsProbe.command = ["test", "-e", root.settingsSignalPath]
+    settingsProbe.running = true
+  }
+
+  function consumeSettingsSignal() {
+    if (root.consumingSignal) return
+    root.consumingSignal = true
+    root.openSettings()
+    signalClear.command = ["rm", "-f", "--", root.settingsSignalPath]
+    signalClear.running = true
+  }
+
   FileView {
     id: configFile
     path: root.configPath
@@ -204,6 +499,11 @@ Item {
       var body = root.engineOutput.length > 0 ? root.engineOutput : engineOut.text
       root.engineOutput = ""
       root.finishSnapshot(exitCode, body)
+      if (root.snapshotAfterSettings) {
+        root.snapshotAfterSettings = false
+        root.startSnapshot()
+        return
+      }
       root.armCooldown()
     }
     onRunningChanged: {
@@ -223,7 +523,10 @@ Item {
 
   Connections {
     target: Quickshell
-    function onScreensChanged() { root.refreshScreen() }
+    function onScreensChanged() {
+      root.refreshScreen()
+      root.ensureOverlayScreen()
+    }
   }
 
   Connections {
@@ -238,8 +541,102 @@ Item {
     onLoaded: root.pushPanel()
   }
 
+  // Inbox button. The loader stays inactive when no AM01S is matched.
+  Connections {
+    target: panelLoader.item
+    function onSettingsRequested() { root.openSettings() }
+  }
+
+  // Same window with the panel unplugged: this loader does not follow panelLoader.
+  Loader {
+    id: settingsLoader
+    active: root.settingsOpen && root.overlayScreen !== null
+    source: active ? "SettingsOverlay.qml" : ""
+    onLoaded: root.pushSettingsOverlay()
+  }
+
+  Connections {
+    target: settingsLoader.item
+    function onCloseRequested() { root.closeSettings() }
+    function onEnabledToggled(id, enabled) { root.queueEnabled(id, enabled) }
+    function onRemainingModeToggled(remainingMode) { root.queueRemainingMode(remainingMode) }
+  }
+
+  Process {
+    id: settingsProc
+    stdout: StdioCollector {
+      id: settingsOut
+      onStreamFinished: root.settingsStdoutText = text
+    }
+    stderr: StdioCollector {
+      id: settingsErr
+      onStreamFinished: root.settingsStderrText = text
+    }
+    onExited: function(exitCode) {
+      settingsFailTimer.stop()
+      var generation = root.activeGeneration
+      var code = exitCode
+      // Let the stdio collectors finish before reading them.
+      Qt.callLater(function() {
+        var out = root.settingsStdoutText.length > 0 ? root.settingsStdoutText : settingsOut.text
+        var err = root.settingsStderrText.length > 0 ? root.settingsStderrText : settingsErr.text
+        root.settingsStdoutText = ""
+        root.settingsStderrText = ""
+        root.finishSettingsJob(generation, code, out, err)
+      })
+    }
+    onRunningChanged: {
+      if (!settingsProc.running && root.settingsActive) {
+        settingsFailTimer.generation = root.activeGeneration
+        settingsFailTimer.restart()
+      }
+    }
+  }
+
+  Timer {
+    id: settingsFailTimer
+    property int generation: 0
+    interval: 200
+    repeat: false
+    onTriggered: root.finishSettingsJob(generation, 1, "", "")
+  }
+
+  Timer {
+    interval: 500
+    repeat: true
+    running: root.settingsSignalPath.length > 0
+    onTriggered: root.pollSettingsSignal()
+  }
+
+  Process {
+    id: settingsProbe
+    onExited: function(exitCode) {
+      if (exitCode !== 0 || root.consumingSignal) return
+      root.consumeSettingsSignal()
+    }
+  }
+
+  Process {
+    id: signalClear
+    property bool sawRunning: false
+    onRunningChanged: {
+      if (signalClear.running) signalClear.sawRunning = true
+      else if (signalClear.sawRunning) {
+        signalClear.sawRunning = false
+        root.consumingSignal = false
+      }
+    }
+    onExited: {
+      signalClear.sawRunning = false
+      root.consumingSignal = false
+    }
+  }
+
   onConnectorChanged: root.refreshScreen()
-  onPanelScreenChanged: root.pushPanel()
+  onPanelScreenChanged: {
+    root.pushPanel()
+    root.ensureOverlayScreen()
+  }
   onUiScaleChanged: root.pushPanel()
   onSnapshotChanged: root.pushPanel()
   onSnapshotStatusChanged: root.pushPanel()
