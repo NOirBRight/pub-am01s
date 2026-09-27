@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "noirbright.pub-am01s",
   "name": "PUB",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Plan Quota and notifications on the AM01S.",
   "kinds": ["service", "overlay"],
   "keepLoaded": true,
