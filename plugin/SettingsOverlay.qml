@@ -300,6 +300,18 @@ Item {
   readonly property bool messageUrgent: root.status === "error" || (root.status === "ok" && root.message.length > 0)
   readonly property bool showEditors: root.status === "ok"
 
+  // Menu surfaces in the theme are often translucent. This card sits over
+  // whatever window is focused, so the fill and the ink have to be opaque.
+  readonly property color cardColor: Qt.rgba(Color.background.r, Color.background.g, Color.background.b, 1)
+  readonly property color rowColor: Qt.lighter(cardColor, 1.45)
+  readonly property color lineColor: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.28)
+  readonly property color ink: Color.foreground
+  readonly property color accentInk: {
+    var accent = Color.accent
+    var luminance = 0.2126 * accent.r + 0.7152 * accent.g + 0.0722 * accent.b
+    return luminance > 0.55 ? "#141816" : "#f6f3ea"
+  }
+
   function requestClose() {
     root.closeRequested()
   }
@@ -333,7 +345,7 @@ Item {
 
       Rectangle {
         anchors.fill: parent
-        color: Color.menu.scrim
+        color: Qt.rgba(0, 0, 0, 0.62)
 
         MouseArea {
           anchors.fill: parent
@@ -347,9 +359,9 @@ Item {
         height: Math.min(640, Math.max(240, parent.height - 80))
         anchors.centerIn: parent
         radius: Math.max(12, Style.cornerRadius)
-        color: Color.menu.background
+        color: root.cardColor
         border.width: 1
-        border.color: Color.menu.border
+        border.color: root.lineColor
 
         MouseArea {
           anchors.fill: parent
@@ -371,7 +383,7 @@ Item {
               width: parent.width - closeButton.width - parent.spacing
               height: parent.height
               text: "设置"
-              color: Color.menu.text
+              color: root.ink
               font.family: Style.font.resolvedFamily
               font.pixelSize: Style.font.heading
               font.bold: true
@@ -385,12 +397,12 @@ Item {
               width: 64
               height: 32
               radius: 16
-              color: Color.menu.selectedBackground
+              color: root.rowColor
 
               Text {
                 anchors.centerIn: parent
                 text: "关闭"
-                color: Color.menu.text
+                color: root.ink
                 font.family: Style.font.resolvedFamily
                 font.pixelSize: Style.font.body
                 textFormat: Text.PlainText
@@ -407,7 +419,7 @@ Item {
             width: parent.width
             visible: root.message.length > 0
             text: root.message
-            color: root.messageUrgent ? Color.urgent : Color.menu.text
+            color: root.messageUrgent ? Color.urgent : root.ink
             font.family: Style.font.resolvedFamily
             font.pixelSize: Style.font.body
             wrapMode: Text.Wrap
@@ -418,7 +430,7 @@ Item {
             width: parent.width
             visible: root.notice.length > 0
             text: root.notice
-            color: root.noticeUrgent ? Color.urgent : Color.menu.text
+            color: root.noticeUrgent ? Color.urgent : root.ink
             font.family: Style.font.resolvedFamily
             font.pixelSize: Style.font.body
             wrapMode: Text.Wrap
@@ -435,7 +447,7 @@ Item {
               width: parent.width - modeSwitch.width - parent.spacing
               height: parent.height
               text: "百分比读法"
-              color: Color.menu.text
+              color: root.ink
               font.family: Style.font.resolvedFamily
               font.pixelSize: Style.font.subtitle
               verticalAlignment: Text.AlignVCenter
@@ -452,12 +464,12 @@ Item {
                 width: 72
                 height: 32
                 radius: 8
-                color: root.remainingMode ? Color.accent : Color.menu.selectedBackground
+                color: root.remainingMode ? Color.accent : root.rowColor
 
                 Text {
                   anchors.centerIn: parent
                   text: "剩余"
-                  color: root.remainingMode ? Color.menu.selectedText : Color.menu.text
+                  color: root.remainingMode ? root.accentInk : root.ink
                   font.family: Style.font.resolvedFamily
                   font.pixelSize: Style.font.body
                   textFormat: Text.PlainText
@@ -473,12 +485,12 @@ Item {
                 width: 72
                 height: 32
                 radius: 8
-                color: root.remainingMode ? Color.menu.selectedBackground : Color.accent
+                color: root.remainingMode ? root.rowColor : Color.accent
 
                 Text {
                   anchors.centerIn: parent
                   text: "已用"
-                  color: root.remainingMode ? Color.menu.text : Color.menu.selectedText
+                  color: root.remainingMode ? root.ink : root.accentInk
                   font.family: Style.font.resolvedFamily
                   font.pixelSize: Style.font.body
                   textFormat: Text.PlainText
@@ -516,7 +528,7 @@ Item {
                 Text {
                   width: parent.width
                   text: root.formTitle
-                  color: Color.menu.text
+                  color: root.ink
                   font.family: Style.font.resolvedFamily
                   font.pixelSize: Style.font.subtitle
                   font.bold: true
@@ -528,7 +540,7 @@ Item {
                   width: parent.width
                   visible: root.activeMode === "cli" && !(root.activeProvider && root.activeProvider.codeEntry)
                   text: "正在等待官方 CLI 结束。"
-                  color: Color.menu.text
+                  color: root.ink
                   font.family: Style.font.resolvedFamily
                   font.pixelSize: Style.font.caption
                   wrapMode: Text.Wrap
@@ -539,7 +551,7 @@ Item {
                   width: parent.width
                   visible: root.activeMode === "cli" && root.activeProvider && root.activeProvider.codeEntry && !root.codeSent
                   text: "如果官方页面给出授权码，粘贴到下面。"
-                  color: Color.menu.text
+                  color: root.ink
                   font.family: Style.font.resolvedFamily
                   font.pixelSize: Style.font.caption
                   wrapMode: Text.Wrap
@@ -551,7 +563,7 @@ Item {
                   width: parent.width
                   visible: root.activeMode === "cli" && root.activeProvider && root.activeProvider.codeEntry && !root.codeSent
                   placeholderText: root.activeProvider && root.activeProvider.codeEntry ? String(root.activeProvider.codeEntry.hint || "") : ""
-                  foreground: Color.menu.text
+                  foreground: root.ink
                   accent: Color.accent
                   font.family: Style.font.resolvedFamily
                   onAccepted: root.submitCode(text)
@@ -561,7 +573,7 @@ Item {
                   width: parent.width
                   visible: root.activeMode === "cli" && root.codeSent && !root.codeRejected
                   text: "正在验证授权码…"
-                  color: Color.menu.text
+                  color: root.ink
                   font.family: Style.font.resolvedFamily
                   font.pixelSize: Style.font.caption
                   textFormat: Text.PlainText
@@ -573,7 +585,7 @@ Item {
                   visible: root.activeMode === "paste"
                   password: true
                   placeholderText: root.activeProvider ? String(root.activeProvider.hint || "") : ""
-                  foreground: Color.menu.text
+                  foreground: root.ink
                   accent: Color.accent
                   font.family: Style.font.resolvedFamily
                   onAccepted: {
@@ -587,7 +599,7 @@ Item {
                   width: parent.width
                   visible: root.activeMode === "paste" && root.activeProvider && root.activeProvider.extra
                   placeholderText: root.activeProvider && root.activeProvider.extra ? String(root.activeProvider.extra.hint || "") : ""
-                  foreground: Color.menu.text
+                  foreground: root.ink
                   accent: Color.accent
                   font.family: Style.font.resolvedFamily
                   onAccepted: root.savePaste()
@@ -642,7 +654,7 @@ Item {
                   width: providerColumn.width
                   height: rowBody.implicitHeight + 16
                   radius: 10
-                  color: Color.menu.selectedBackground
+                  color: root.rowColor
 
                   Column {
                     id: rowBody
@@ -666,7 +678,7 @@ Item {
                         Text {
                           width: parent.width
                           text: modelData.name || modelData.id
-                          color: Color.menu.text
+                          color: root.ink
                           font.family: Style.font.resolvedFamily
                           font.pixelSize: Style.font.subtitle
                           font.bold: true
@@ -759,15 +771,15 @@ Item {
     width: buttonLabel.implicitWidth + 20
     height: 28
     radius: 8
-    color: primary ? Color.accent : Color.menu.background
+    color: primary ? Color.accent : root.rowColor
     border.width: primary ? 0 : 1
-    border.color: Color.menu.border
+    border.color: root.lineColor
 
     Text {
       id: buttonLabel
       anchors.centerIn: parent
       text: button.label
-      color: button.primary ? Color.menu.selectedText : Color.menu.text
+      color: button.primary ? root.accentInk : root.ink
       font.family: Style.font.resolvedFamily
       font.pixelSize: Style.font.caption
       textFormat: Text.PlainText
