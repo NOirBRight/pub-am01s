@@ -571,6 +571,15 @@ Item {
     function onValuesChanged() { root.refreshScreen() }
   }
 
+  // Hyprland IPC fills monitor size a moment after the service is created.
+  // Until then every match fails and screensChanged does not fire again.
+  Timer {
+    interval: 300
+    repeat: true
+    running: root.panelScreen === null
+    onTriggered: root.refreshScreen()
+  }
+
   Loader {
     id: panelLoader
     active: root.panelScreen !== null
