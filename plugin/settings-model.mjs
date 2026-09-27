@@ -17,6 +17,61 @@ export function remainingModeCommand(remainingMode) {
   return ['settings', 'set', 'remaining-mode', onOff(remainingMode)]
 }
 
+// Full provider id list after moving one step. Null when it would not change.
+export function movedOrder(providers, id, direction) {
+  const list = []
+  const seen = {}
+  const rows = asArray(providers) || []
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i]
+    const key = text(typeof row === 'string' ? row : row && row.id).replace(/^\s+|\s+$/g, '')
+    if (!key || seen[key]) continue
+    seen[key] = true
+    list.push(key)
+  }
+  const index = list.indexOf(text(id).replace(/^\s+|\s+$/g, ''))
+  const step = direction < 0 ? -1 : 1
+  const nextIndex = index + step
+  if (index < 0 || nextIndex < 0 || nextIndex >= list.length) return null
+  const swapped = list.slice()
+  const hold = swapped[index]
+  swapped[index] = swapped[nextIndex]
+  swapped[nextIndex] = hold
+  return swapped
+}
+
+export function orderCommand(ids) {
+  const list = asArray(ids) || []
+  const argv = ['settings', 'set', 'order']
+  const seen = {}
+  for (let i = 0; i < list.length; i += 1) {
+    const id = text(list[i]).replace(/^\s+|\s+$/g, '')
+    if (!id || seen[id]) return null
+    seen[id] = true
+    argv.push(id)
+  }
+  return argv.length > 3 ? argv : null
+}
+
+export function withOrder(settings, ids) {
+  const rows = copyProviders(settings)
+  const byId = {}
+  for (let i = 0; i < rows.length; i += 1) byId[rows[i].id] = rows[i]
+  const next = []
+  const seen = {}
+  const wanted = asArray(ids) || []
+  for (let i = 0; i < wanted.length; i += 1) {
+    const id = text(wanted[i]).replace(/^\s+|\s+$/g, '')
+    if (!id || seen[id] || !byId[id]) continue
+    seen[id] = true
+    next.push(byId[id])
+  }
+  for (let i = 0; i < rows.length; i += 1) {
+    if (!seen[rows[i].id]) next.push(rows[i])
+  }
+  return { remainingMode: remainingModeOf(settings), providers: next }
+}
+
 export function loginLabel(errorKind) {
   return errorKind === 'signed-out' ? '未登录' : ''
 }
@@ -129,23 +184,47 @@ export function remainingModeOf(settings) {
   return settings.remainingMode !== false
 }
 
+function presentRow(provider, enabled, signedOut) {
+  const id = text(provider.id)
+  const known = Object.prototype.hasOwnProperty.call(enabled, id)
+  return {
+    id,
+    name: text(provider.name) || text(provider.shortName) || id,
+    enabled: known ? enabled[id] === true : false,
+    loginLabel: signedOut[id] ? loginLabel('signed-out') : '',
+  }
+}
+
 export function presentSettings(catalog, settings, snapshot) {
   const enabled = enabledMap(settings)
   const signedOut = signedOutMap(snapshot)
-  const rows = []
+  const byId = {}
+  const catalogList = []
   const providers = providersFrom(catalog)
   for (let i = 0; i < providers.length; i += 1) {
     const provider = providers[i]
     if (!provider || typeof provider !== 'object' || isList(provider)) continue
     const id = text(provider.id)
-    if (!id) continue
-    const known = Object.prototype.hasOwnProperty.call(enabled, id)
-    rows.push({
-      id,
-      name: text(provider.name) || text(provider.shortName) || id,
-      enabled: known ? enabled[id] === true : false,
-      loginLabel: signedOut[id] ? loginLabel('signed-out') : '',
-    })
+    if (!id || byId[id]) continue
+    byId[id] = provider
+    catalogList.push(provider)
+  }
+  const rows = []
+  const seen = {}
+  const settingsRows = providersFrom(settings)
+  for (let i = 0; i < settingsRows.length; i += 1) {
+    const row = settingsRows[i]
+    if (!row || typeof row !== 'object' || isList(row)) continue
+    const id = text(row.id)
+    if (!id || seen[id] || !byId[id]) continue
+    seen[id] = true
+    rows.push(presentRow(byId[id], enabled, signedOut))
+  }
+  for (let i = 0; i < catalogList.length; i += 1) {
+    const id = text(catalogList[i].id)
+    if (seen[id]) continue
+    seen[id] = true
+    rows.push(presentRow(catalogList[i], enabled, signedOut))
   }
   return {
     remainingMode: remainingModeOf(settings),

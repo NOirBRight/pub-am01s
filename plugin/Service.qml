@@ -45,7 +45,6 @@ Item {
   property bool settingsActive: false
   property string settingsStdoutText: ""
   property string settingsStderrText: ""
-  property bool consumingSignal: false
   property bool snapshotAfterSettings: false
 
   readonly property var settingsView: SettingsModel.presentSettings(catalogDoc, settingsDoc, snapshot)
@@ -58,14 +57,6 @@ Item {
       return root.settingsError.length > 0 ? root.settingsError : "Engine 没有返回设置"
     if (root.settingsStatus !== "ok") return "读取中"
     return root.settingsError
-  }
-  // Menu touch file. Runtime dir when set, otherwise the user cache.
-  readonly property string settingsSignalPath: {
-    var runtime = String(Quickshell.env("XDG_RUNTIME_DIR") || "").replace(/^\s+|\s+$/g, "").replace(/\/+$/g, "")
-    if (runtime.length > 0) return runtime + "/pub-am01s/open-settings"
-    var home = String(Quickshell.env("HOME") || "").replace(/^\s+|\s+$/g, "").replace(/\/+$/g, "")
-    if (home.length === 0) return ""
-    return home + "/.cache/pub-am01s/open-settings"
   }
 
   // ADR 0004: the next snapshot starts five minutes after the previous run ends.
@@ -255,6 +246,7 @@ Item {
     if (job.kind === "settings") return SettingsModel.settingsCommand()
     if (job.field === "enabled") return SettingsModel.enabledCommand(job.id, job.enabled === true)
     if (job.field === "remaining-mode") return SettingsModel.remainingModeCommand(job.remainingMode === true)
+    if (job.field === "order") return SettingsModel.orderCommand(String(job.ids || "").split("\n"))
     return []
   }
 
@@ -356,6 +348,8 @@ Item {
       root.settingsDoc = SettingsModel.withEnabled(root.settingsDoc, job.id, job.enabled === true)
     else if (job.field === "remaining-mode")
       root.settingsDoc = SettingsModel.withRemainingMode(root.settingsDoc, job.remainingMode === true)
+    else if (job.field === "order")
+      root.settingsDoc = SettingsModel.withOrder(root.settingsDoc, String(job.ids || "").split("\n"))
     root.settingsError = ""
     if (root.catalogDoc && root.settingsDoc) {
       root.catalogFresh = true
@@ -404,6 +398,18 @@ Item {
       field: "enabled",
       id: String(id),
       enabled: on,
+    })
+  }
+
+  function queueOrder(id, direction) {
+    if (root.resolvedEngine().length === 0) return
+    var ids = SettingsModel.movedOrder(root.overlayProviders, id, direction)
+    if (!ids || !ids.length) return
+    root.settingsDoc = SettingsModel.withOrder(root.settingsDoc, ids)
+    root.enqueueJob({
+      kind: "set",
+      field: "order",
+      ids: ids.join("\n"),
     })
   }
 
@@ -483,21 +489,6 @@ Item {
     root.snapshotAfterSettings = false
     cooldown.stop()
     root.startSnapshot()
-  }
-
-  function pollSettingsSignal() {
-    if (root.settingsSignalPath.length === 0 || root.consumingSignal) return
-    if (settingsProbe.running || signalClear.running) return
-    settingsProbe.command = ["test", "-e", root.settingsSignalPath]
-    settingsProbe.running = true
-  }
-
-  function consumeSettingsSignal() {
-    if (root.consumingSignal) return
-    root.consumingSignal = true
-    root.openSettings()
-    signalClear.command = ["rm", "-f", "--", root.settingsSignalPath]
-    signalClear.running = true
   }
 
   FileView {
@@ -589,6 +580,7 @@ Item {
     target: settingsLoader.item
     function onCloseRequested() { root.closeSettings() }
     function onEnabledToggled(id, enabled) { root.queueEnabled(id, enabled) }
+    function onOrderMoved(id, direction) { root.queueOrder(id, direction) }
     function onRemainingModeToggled(remainingMode) { root.queueRemainingMode(remainingMode) }
     function onLoginChanged() { root.refreshAfterSettings() }
   }
@@ -630,37 +622,6 @@ Item {
     interval: 200
     repeat: false
     onTriggered: root.finishSettingsJob(generation, 1, "", "")
-  }
-
-  Timer {
-    interval: 500
-    repeat: true
-    running: root.settingsSignalPath.length > 0
-    onTriggered: root.pollSettingsSignal()
-  }
-
-  Process {
-    id: settingsProbe
-    onExited: function(exitCode) {
-      if (exitCode !== 0 || root.consumingSignal) return
-      root.consumeSettingsSignal()
-    }
-  }
-
-  Process {
-    id: signalClear
-    property bool sawRunning: false
-    onRunningChanged: {
-      if (signalClear.running) signalClear.sawRunning = true
-      else if (signalClear.sawRunning) {
-        signalClear.sawRunning = false
-        root.consumingSignal = false
-      }
-    }
-    onExited: {
-      signalClear.sawRunning = false
-      root.consumingSignal = false
-    }
   }
 
   onConnectorChanged: root.refreshScreen()

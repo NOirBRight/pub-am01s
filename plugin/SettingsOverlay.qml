@@ -21,6 +21,7 @@ Item {
 
   signal closeRequested()
   signal enabledToggled(string id, bool enabled)
+  signal orderMoved(string id, int direction)
   signal remainingModeToggled(bool remainingMode)
   signal loginChanged()
 
@@ -297,6 +298,7 @@ Item {
     root.note("", false)
   }
 
+  readonly property int providerCount: root.providers && root.providers.length ? root.providers.length : 0
   readonly property bool messageUrgent: root.status === "error" || (root.status === "ok" && root.message.length > 0)
   readonly property bool showEditors: root.status === "ok"
 
@@ -668,10 +670,10 @@ Item {
                     Row {
                       width: parent.width
                       height: 36
-                      spacing: 12
+                      spacing: 8
 
                       Column {
-                        width: parent.width - track.width - parent.spacing
+                        width: Math.max(0, parent.width - track.width - moves.width - parent.spacing * 2)
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 2
 
@@ -695,6 +697,23 @@ Item {
                           font.pixelSize: Style.font.caption
                           elide: Text.ElideRight
                           textFormat: Text.PlainText
+                        }
+                      }
+
+                      Row {
+                        id: moves
+                        spacing: 4
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        OrderButton {
+                          label: "↑"
+                          canMove: row.index > 0
+                          onClicked: root.orderMoved(String(modelData.id || ""), -1)
+                        }
+                        OrderButton {
+                          label: "↓"
+                          canMove: row.index < root.providerCount - 1
+                          onClicked: root.orderMoved(String(modelData.id || ""), 1)
                         }
                       }
 
@@ -758,6 +777,37 @@ Item {
           }
         }
       }
+    }
+  }
+
+  component OrderButton: Rectangle {
+    id: moveButton
+
+    property string label: ""
+    property bool canMove: true
+    signal clicked()
+
+    width: 28
+    height: 28
+    radius: 8
+    color: root.rowColor
+    border.width: 1
+    border.color: root.lineColor
+    opacity: moveButton.canMove ? 1 : 0.35
+
+    Text {
+      anchors.centerIn: parent
+      text: moveButton.label
+      color: root.ink
+      font.family: Style.font.resolvedFamily
+      font.pixelSize: 16
+      font.bold: true
+    }
+
+    MouseArea {
+      anchors.fill: parent
+      enabled: moveButton.canMove
+      onClicked: moveButton.clicked()
     }
   }
 
