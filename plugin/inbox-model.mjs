@@ -4,6 +4,8 @@ var FRESH_MS = 10 * 60 * 1000
 // Swipe left is a negative dx. Commit once it passes 40% of the row width.
 var SWIPE_COMMIT_RATIO = 0.4
 var INITIAL_COLORS = ["#509475", "#2dd5b7", "#d2689c", "#a2734b", "#81b8a8", "#549e6a"]
+// Senders that are not an application: Omarchy's own toasts and bare notify-send.
+var SYSTEM_SENDERS = ["omarchy-action", "notify-send"]
 var B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
 function oneLine(value) {
@@ -92,8 +94,7 @@ function filePath(raw) {
 // Omarchy's own toasts and bare notify-send come from no application. They get
 // their glyph, as on Omarchy's popup card, or the Omarchy mark.
 function systemSender(app) {
-  var name = oneLine(app)
-  return name === "omarchy-action" || name === "notify-send"
+  return SYSTEM_SENDERS.indexOf(oneLine(app)) >= 0
 }
 
 function iconFrom(appIcon, app, glyph) {
@@ -181,16 +182,19 @@ function readInbox(files, nowMs) {
   return unique
 }
 
-// No execArgv: focus the window this notification is about. A task summary
-// sits in the agent terminal title; otherwise match the sender the way
-// omarchy-hyprland-focus-app does.
+// No execArgv: focus the window this notification is about. An app with a
+// desktop entry (wmClass) is its own window; a WeChat summary is a contact
+// name that another window's title may contain. An unknown sender's task
+// summary sits in the agent terminal title; otherwise match the sender the
+// way omarchy-hyprland-focus-app does.
 function focusAddress(clients, note) {
   var list = Array.isArray(clients) ? clients : []
   var summary = oneLine(note && note.summary)
   var app = oneLine(note && note.app)
+  var wmClass = oneLine(note && note.wmClass)
   var address = ""
-  if (summary.length >= 2) address = addressByTitle(list, summary)
-  if (!address && note && note.wmClass) address = addressByApp(list, note.wmClass)
+  if (wmClass) address = addressByApp(list, wmClass)
+  if (!address && summary.length >= 2) address = addressByTitle(list, summary)
   if (!address && app) address = addressByApp(list, app)
   return safeAddress(address)
 }
@@ -312,10 +316,6 @@ function textFromBase64(b64) {
   return decodeUtf8(bytes)
 }
 
-function compactName(value) {
-  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "")
-}
-
 // Lines are "Name<TAB>Icon<TAB>StartupWMClass" from desktop files.
 export function parseDesktopCatalog(text) {
   var rows = []
@@ -335,13 +335,13 @@ export function parseDesktopCatalog(text) {
 }
 
 export function matchDesktop(app, rows) {
-  var wanted = compactName(app)
+  var wanted = compact(app)
   if (wanted.length < 3 || !rows || !rows.length) return null
   var best = null
   var bestScore = 0
   for (var i = 0; i < rows.length; i++) {
     var row = rows[i]
-    var name = compactName(row && row.name)
+    var name = compact(row && row.name)
     if (!name) continue
     var score = 0
     if (name === wanted) score = 100 + name.length
@@ -355,7 +355,7 @@ export function matchDesktop(app, rows) {
   if (!best.icon) {
     for (var j = 0; j < rows.length; j++) {
       var other = rows[j]
-      var otherName = compactName(other && other.name)
+      var otherName = compact(other && other.name)
       if (!other || !other.icon || !otherName) continue
       if (wanted.indexOf(otherName) === 0 || otherName.indexOf(wanted) === 0)
         return { name: best.name, icon: other.icon, wm: best.wm || other.wm }

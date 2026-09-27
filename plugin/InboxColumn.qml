@@ -210,7 +210,7 @@ Item {
     Util.execArgv(argv)
   }
 
-  function iconSources(namesText, app, filePath, kind) {
+  function iconSources(namesText, app, filePath, kind, system) {
     var urls = []
     var seen = {}
     function add(url) {
@@ -221,7 +221,7 @@ Item {
     }
     var names = String(namesText || "").split("\n")
     // A system toast is not an app; do not borrow a desktop entry's icon.
-    if (kind !== "system" && kind !== "glyph") {
+    if (!system) {
       var desktop = InboxModel.matchDesktop(app, root.desktopRows)
       if (desktop && desktop.icon) names.push(desktop.icon)
     }
@@ -670,13 +670,15 @@ Item {
                 visible: noteIcon.status !== Image.Ready
                 text: {
                   if (note.model.iconKind === "glyph") return note.model.iconGlyph
+                  // Omarchy's bell, as on its own "No recent notifications" toast.
+                  if (note.model.iconKind === "system") return "\u{f009a}"
                   if (note.model.iconKind === "initial" && note.model.iconLetter) return note.model.iconLetter
                   var app = String(note.model.app || "")
                   return app.length > 0 ? app.charAt(0).toUpperCase() : "?"
                 }
                 font.family: Style.font.family
                 font.pixelSize: 19
-                font.bold: true
+                font.bold: note.model.iconKind !== "glyph" && note.model.iconKind !== "system"
                 color: root.bgDark
               }
               Image {
@@ -686,7 +688,7 @@ Item {
                 fillMode: Image.PreserveAspectCrop
                 sourceSize.width: 80
                 sourceSize.height: 80
-                property var sources: root.iconSources(note.model.iconNames, note.model.app, note.model.iconPath, note.model.iconKind)
+                property var sources: root.iconSources(note.model.iconNames, note.model.app, note.model.iconPath, note.model.iconKind, note.model.system)
                 property int sourceIndex: 0
                 function useNext() {
                   var list = sources || []

@@ -209,6 +209,16 @@ describe("focusAddress", () => {
     },
   ]
 
+  it("focuses an app with a desktop entry before a window titled like the summary", () => {
+    const wechat = { class: "wechat", title: "微信", address: "0x222" }
+    const decoy = { class: "org.omarchy.agent", title: "π > 飞飞难民营 notes", address: "0x333" }
+    expect(focusAddress([decoy, wechat], {
+      app: "WeChat",
+      summary: "飞飞难民营",
+      wmClass: "wechat",
+    })).toBe("0x222")
+  })
+
   it("focuses the agent window whose title contains the summary", () => {
     expect(focusAddress(clients, {
       app: "omp",
