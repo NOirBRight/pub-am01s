@@ -57,15 +57,10 @@ export function cliLoginCommand(entry) {
   return argv
 }
 
-// credentialSource "pub" is the PUB file. With no source, Clear is only for a
-// signed-in key or both. cli and env are never cleared from here.
+// Clear only removes a credential PUB itself stored. cli, env, and a missing source stay.
 export function clearOffered(provider, entry) {
-  const source = credentialSourceOf(provider)
-  if (source === 'pub') return true
-  if (source) return false
-  if (!signedIn(provider)) return false
-  const kind = entry && typeof entry === 'object' && !isList(entry) ? text(entry.credentialKind) : ''
-  return kind === 'key' || kind === 'both'
+  void entry
+  return credentialSourceOf(provider) === 'pub'
 }
 
 export function isInvalidCodeLine(line, codeEntry) {
@@ -273,12 +268,6 @@ function credentialSourceOf(provider) {
   if (!provider || typeof provider !== 'object' || isList(provider)) return ''
   if (typeof provider.credentialSource !== 'string') return ''
   return provider.credentialSource.replace(/^\s+|\s+$/g, '')
-}
-
-function signedIn(provider) {
-  if (!provider || typeof provider !== 'object' || isList(provider)) return false
-  if (provider.errorKind === 'signed-out' || provider.error === 'signed out') return false
-  return true
 }
 
 function indexById(rows) {

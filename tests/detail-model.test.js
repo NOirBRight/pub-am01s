@@ -107,8 +107,8 @@ describe('detailFor', () => {
     expect(detail.windows[0].resetLabel).not.toBe(layout.providers[0].windows[0].resetAbbrev)
     expect(layout.mode).toBe('wide')
     expect(layout.providers[0].windows.map(row => row.displayLabel)).toEqual([
-      'Cursor Models',
-      'Other Models',
+      'Cursor',
+      'Other',
       'Total',
     ])
   })

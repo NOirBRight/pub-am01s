@@ -11,7 +11,7 @@ Item {
 
   signal closeRequested()
 
-  readonly property color warnOrange: "#a2734b"
+  property color warnOrange: Color.urgent
   property var barWindows: []
 
   visible: root.progress > 0.01 && !!root.detail
@@ -32,8 +32,12 @@ Item {
 
   function hasQuota(detail) {
     if (!detail || !detail.windows || !detail.windows.length) return false
-    var first = detail.windows[0]
-    return !!first && typeof first.remaining === "number"
+    var windows = detail.windows
+    var count = windows.length
+    for (var i = 0; i < count; i++) {
+      if (windows[i] && typeof windows[i].remaining === "number") return true
+    }
+    return false
   }
 
   // Recreate the bars once the open is underway so they refill instead of appearing full.
@@ -205,7 +209,7 @@ Item {
               text: slot.modelData.label
               font.family: Style.font.resolvedFamily
               font.pixelSize: slot.modelData.primary ? 18 : 16
-              font.bold: slot.modelData.primary
+              font.bold: false
               color: slot.modelData.primary ? Color.foreground : Color.muted
             }
             Text {
@@ -226,7 +230,8 @@ Item {
             anchors.topMargin: 8
             anchors.bottom: caption.top
             anchors.bottomMargin: 8
-            width: slot.modelData.primary ? 40 : 34
+            width: 34
+            seg: 7
             value: slot.modelData.remaining === null || slot.modelData.remaining === undefined ? 0 : slot.modelData.remaining
             delayMs: slot.index * 80
             litColor: root.levelColor(slot.modelData.level)
@@ -271,96 +276,4 @@ Item {
     }
   }
 
-  component CountText: Row {
-    id: pct
-    property var value: null
-    property int delayMs: 0
-    property int size: 28
-    property color digitColor: Color.foreground
-    property real shown: 0
-    property bool ready: false
-
-    spacing: 1
-    Behavior on shown { enabled: pct.ready; NumberAnimation { duration: 750; easing.type: Easing.OutCubic } }
-    Timer {
-      interval: Math.max(1, pct.delayMs)
-      running: true
-      onTriggered: {
-        pct.ready = true
-        pct.shown = Qt.binding(function() { return pct.value === null || pct.value === undefined ? 0 : pct.value })
-      }
-    }
-
-    Text {
-      id: digits
-      text: pct.value === null || pct.value === undefined ? "—" : String(Math.round(pct.shown * 100))
-      font.family: Style.font.resolvedFamily
-      font.pixelSize: pct.size
-      font.bold: true
-      color: pct.digitColor
-    }
-    Text {
-      visible: pct.value !== null && pct.value !== undefined
-      anchors.baseline: digits.baseline
-      text: "%"
-      font.family: Style.font.resolvedFamily
-      font.pixelSize: Math.round(pct.size * 0.55)
-      font.bold: true
-      color: pct.digitColor
-      opacity: 0.7
-    }
-  }
-
-  component SegBar: Item {
-    id: bar
-    property real value: 0
-    property color litColor: Color.accent
-    property color trackColor: Color.muted
-    property int seg: 7
-    property int gap: 3
-    property int delayMs: 0
-    property bool pulse: false
-    property real shown: 0
-    property bool ready: false
-
-    readonly property int count: Math.max(1, Math.floor((height + gap) / (seg + gap)))
-    readonly property int lit: Math.round(count * Math.max(0, Math.min(1, shown)))
-
-    clip: true
-    Behavior on shown { enabled: bar.ready; NumberAnimation { duration: 750; easing.type: Easing.OutCubic } }
-    Timer {
-      interval: Math.max(1, bar.delayMs)
-      running: true
-      onTriggered: {
-        bar.ready = true
-        bar.shown = Qt.binding(function() { return bar.value })
-      }
-    }
-    onPulseChanged: if (!bar.pulse) bar.opacity = 1
-
-    Item {
-      anchors.fill: parent
-      SequentialAnimation on opacity {
-        running: bar.pulse
-        loops: Animation.Infinite
-        NumberAnimation { to: 0.45; duration: 700; easing.type: Easing.InOutSine }
-        NumberAnimation { to: 1; duration: 700; easing.type: Easing.InOutSine }
-      }
-
-      Repeater {
-        model: bar.count
-        delegate: Rectangle {
-          required property int index
-          readonly property bool on: index < bar.lit
-          width: bar.width
-          height: bar.seg
-          radius: 2
-          y: bar.height - (index + 1) * (bar.seg + bar.gap) + bar.gap
-          color: on ? (index === bar.lit - 1 ? Qt.lighter(bar.litColor, 1.25) : bar.litColor) : bar.trackColor
-          opacity: on ? 1 : 0.45
-          Behavior on color { ColorAnimation { duration: 120 } }
-        }
-      }
-    }
-  }
 }

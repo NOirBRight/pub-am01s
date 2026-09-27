@@ -68,9 +68,9 @@ describe('clear is offered only for a PUB-stored credential', () => {
     expect(clearOffered({ credentialSource: 'file', remaining: 0.4 }, key)).toBe(false)
   })
 
-  it('falls back to a signed-in key or both when credentialSource is absent', () => {
-    expect(clearOffered({ id: 'ollama-cloud', remaining: 0.5 }, key)).toBe(true)
-    expect(clearOffered({ id: 'opencode-go', errorKind: 'rate-limit' }, both)).toBe(true)
+  it('stays off when credentialSource is absent', () => {
+    expect(clearOffered({ id: 'ollama-cloud', remaining: 0.5 }, key)).toBe(false)
+    expect(clearOffered({ id: 'opencode-go', errorKind: 'rate-limit' }, both)).toBe(false)
     expect(clearOffered({ id: 'claude', remaining: 0.4 }, cli)).toBe(false)
     expect(clearOffered({ errorKind: 'signed-out' }, key)).toBe(false)
     expect(clearOffered({ error: 'signed out' }, both)).toBe(false)
@@ -144,7 +144,7 @@ describe('catalog login command', () => {
     const original = presented[0]
     const rows = withLogin(presented, catalog, snapshot)
     expect(original).toEqual({ id: 'claude', name: 'Claude', enabled: true, loginLabel: '未登录' })
-    expect(rows.map(row => row.clearOffered)).toEqual([false, false, true])
+    expect(rows.map(row => row.clearOffered)).toEqual([false, false, false])
     expect(rows[0].loginLabel).toBe('未登录')
     expect(rows[0].codeEntry).toEqual(claudeCode)
     expect(rows[0].cli).toEqual({
@@ -157,6 +157,6 @@ describe('catalog login command', () => {
     expect(rows[1].credentialSource).toBe('cli')
     expect(rows[2].page).toEqual({ url: 'https://ollama.com/settings/keys', label: 'ollama.com' })
     expect(rows[2].cli).toBeNull()
-    expect(rows[2].clearOffered).toBe(true)
+    expect(rows[2].clearOffered).toBe(false)
   })
 })

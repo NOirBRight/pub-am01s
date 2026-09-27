@@ -1,7 +1,9 @@
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
 import qs.Commons
+import "theme-colors.mjs" as ThemeColors
 
 // Loaded only after a screen matches, so offscreen sessions never construct a PanelWindow.
 Item {
@@ -15,7 +17,16 @@ Item {
 
   signal settingsRequested()
 
+  property var themeColors: ThemeColors.parseTheme("")
   readonly property real safeScale: root.uiScale >= 1 && root.uiScale <= 1.4 ? root.uiScale : 1.25
+
+  FileView {
+    path: Color.currentThemePath + "/colors.toml"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.themeColors = ThemeColors.parseTheme(text())
+    onFileChanged: reload()
+  }
 
   PanelWindow {
     id: panel
@@ -63,11 +74,25 @@ Item {
         canvasWidth: parent.width
         snapshot: root.snapshot
         snapshotStatus: root.snapshotStatus
+        themeOrange: root.themeColors.orange
         width: {
-          if (meterBank.snapshotStatus === "ok") return meterBank.layout.meterWidth
-          if (meterBank.snapshotStatus === "needs-update" || meterBank.snapshotStatus === "unreadable") return 240
-          return 0
+          var resting = 0
+          if (meterBank.snapshotStatus === "ok") resting = meterBank.layout.meterWidth
+          else if (meterBank.snapshotStatus === "needs-update" || meterBank.snapshotStatus === "unreadable") resting = 240
+          if (meterBank.detailOpen && meterBank.layout.maxWidth > resting) return meterBank.layout.maxWidth
+          return resting
         }
+        Behavior on width { NumberAnimation { duration: 340; easing.type: Easing.OutCubic } }
+      }
+
+      Rectangle {
+        visible: meterBank.width > 1
+        width: 1
+        x: meterBank.x + meterBank.width + 5
+        y: 12
+        height: parent.height - 24
+        color: Color.muted
+        opacity: 0.55
       }
 
       InboxColumn {
@@ -80,6 +105,12 @@ Item {
         anchors.bottomMargin: 12
         anchors.rightMargin: 10
         shell: root.shell
+        themeOrange: root.themeColors.orange
+        themeBgLight: root.themeColors.bgLight
+        themeSel: root.themeColors.sel
+        themeFgBright: root.themeColors.fgBright
+        themeFgDim: root.themeColors.fgDim
+        themeBgDark: root.themeColors.bgDark
         onSettingsRequested: root.settingsRequested()
       }
     }

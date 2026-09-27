@@ -4,7 +4,10 @@
   "name": "PUB",
   "version": "0.1.0",
   "description": "Plan Quota and notifications on the AM01S.",
-  "kinds": ["service"],
+  "kinds": ["service", "overlay"],
   "keepLoaded": true,
-  "entryPoints": { "service": "Service.qml" }
+  "entryPoints": {
+    "service": "Service.qml",
+    "overlay": "SettingsSummon.qml"
+  }
 }

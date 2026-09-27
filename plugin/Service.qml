@@ -24,7 +24,6 @@ Item {
   property string connector: ""
   property real uiScale: 1.25
   property var panelScreen: null
-  property string enginePath: ""
   property string snapshotStatus: "no-engine"
   property var snapshot: null
   property bool engineActive: false
@@ -83,7 +82,6 @@ Item {
   function applyConfig(raw) {
     var nextConnector = ""
     var nextScale = 1.25
-    var nextEngine = ""
     var text = String(raw || "")
     if (text.length > 0) {
       try {
@@ -95,20 +93,14 @@ Item {
           }
           if (parsed.uiScale !== undefined && parsed.uiScale !== null)
             nextScale = root.clampUiScale(parsed.uiScale)
-          if (typeof parsed.enginePath === "string") {
-            var engineTrimmed = parsed.enginePath.replace(/^\s+|\s+$/g, "")
-            if (engineTrimmed.length > 0) nextEngine = engineTrimmed
-          }
         }
       } catch (e) {
         nextConnector = ""
         nextScale = 1.25
-        nextEngine = ""
       }
     }
     if (root.connector !== nextConnector) root.connector = nextConnector
     if (root.uiScale !== nextScale) root.uiScale = nextScale
-    if (root.enginePath !== nextEngine) root.enginePath = nextEngine
     root.configReady = true
     if (root.componentReady) root.ensureSnapshot()
   }
@@ -132,21 +124,13 @@ Item {
     return root.localPath(Qt.resolvedUrl("bin/pub-engine.mjs"))
   }
 
-  // Config enginePath wins. Otherwise the pinned file beside this plugin.
   function resolvedEngine() {
-    if (root.enginePath.length > 0) return root.enginePath
     return root.pinnedEngine()
   }
 
-  // enginePath is executed as given. The pinned asset is an ES module, so Node runs it.
+  // The pinned asset is an ES module, so Node runs it.
   function engineCommand(args) {
-    var command = []
-    if (root.enginePath.length > 0)
-      command.push(root.enginePath)
-    else {
-      command.push("node")
-      command.push(root.pinnedEngine())
-    }
+    var command = ["node", root.pinnedEngine()]
     var list = args || []
     var count = list.length ? list.length : 0
     for (var i = 0; i < count; i++)

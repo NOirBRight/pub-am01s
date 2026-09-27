@@ -12,9 +12,7 @@ PUB 在 Omarchy（Hyprland）上的 AM01S 副屏。副屏整块显示 Plan Quota
 python3 scripts/install.py
 ```
 
-脚本按仓库里的 `engine.tag` 下载 PUB 的 Release 附件，钉在 `plugin/bin/pub-engine.mjs`，再把插件、Hyprland 片段和菜单项装进当前用户的配置目录。再跑一次不会重复添加。
-
-配置里的 `enginePath` 非空时，插件用那条路径，而不是钉住的文件。
+脚本按仓库里的 `engine.tag` 下载 PUB 的 Release 附件，钉在 `plugin/bin/pub-engine.mjs`，再把插件、Hyprland 片段和菜单项装进当前用户的配置目录。再跑一次不会重复添加。插件只跑这份钉住的文件。
 
 ## 升级
 

@@ -228,8 +228,8 @@ describe('layoutMeterBank', () => {
       75.71428571428571,
     ])
     expect(layout.providers[2].windows.map(row => [row.displayLabel, row.level, row.primary])).toEqual([
-      ['Cursor Models', 'none', false],
-      ['Other Models', 'danger', false],
+      ['Cursor', 'none', false],
+      ['Other', 'danger', false],
       ['Total', 'warn', true],
     ])
     expect(layout.providers[2].windows[0].resetLabel).toBe('Resets in 2d 4h')
@@ -252,7 +252,7 @@ describe('layoutMeterBank', () => {
       displayName: 'Cmd Code',
     })
     expect(layout.providers[3].windows[0]).toMatchObject({
-      displayLabel: 'Monthly',
+      displayLabel: 'Month',
       shortLabel: 'Month',
       level: 'danger',
       remaining: 0.05,
@@ -334,7 +334,7 @@ describe('layoutMeterBank', () => {
       84.28571428571429,
       84.28571428571429,
     ])
-    expect(layout.providers[0].windows[0].displayLabel).toBe('Weekly')
+    expect(layout.providers[0].windows[0].displayLabel).toBe('Week')
     expect(layout.providers[5].displayName).toBe('OpenCode')
   })
 

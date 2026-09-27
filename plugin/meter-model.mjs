@@ -36,6 +36,7 @@ export function layoutMeterBank(snapshot, canvasWidth) {
   return {
     mode: wide ? 'wide' : 'compact',
     meterWidth: natural,
+    maxWidth: maxW,
     slotWidth,
     providers: providers.map((provider, index) => {
       const mine = counts[index]
@@ -122,7 +123,7 @@ function presentProvider(provider, width, wide) {
     width,
     error: errorText(provider),
     displayName: narrow ? shortName : name,
-    windows: shown.map(window => presentWindow(window, wide)),
+    windows: shown.map(window => presentWindow(window)),
   }
 }
 
@@ -138,7 +139,7 @@ function presentDetailWindow(window) {
   }
 }
 
-function presentWindow(window, wide) {
+function presentWindow(window) {
   const label = text(window.label)
   const shortLabel = text(window.shortLabel) || label
   const resetLabel = text(window.resetLabel)
@@ -152,7 +153,7 @@ function presentWindow(window, wide) {
     remaining,
     level: levelFor(remaining),
     primary: window.primary === true,
-    displayLabel: wide ? label : shortLabel,
+    displayLabel: shortLabel,
   }
 }
 

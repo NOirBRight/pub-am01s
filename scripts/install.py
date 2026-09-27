@@ -17,10 +17,7 @@ SETUP_PUB_KEY = "setup.pub"
 SETUP_PUB_ENTRY = {
     "icon": "󰔡",
     "label": "PUB 设置",
-    "action": (
-        'mkdir -p "${XDG_RUNTIME_DIR:-$HOME/.cache}/pub-am01s" && '
-        'touch "${XDG_RUNTIME_DIR:-$HOME/.cache}/pub-am01s/open-settings"'
-    ),
+    "action": "omarchy-shell shell summon noirbright.pub-am01s",
 }
 DESCRIPTION = "ChangHong Electric Co.Ltd 0x0030"
 REPO_ROOT = Path(__file__).resolve().parent.parent

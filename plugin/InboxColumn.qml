@@ -70,21 +70,6 @@ Item {
     "  printf 'changed\\n'\n" +
     "done\n"
 
-  function applyTheme(raw) {
-    var found = {}
-    var lines = String(raw || "").split("\n")
-    for (var i = 0; i < lines.length; i++) {
-      var match = lines[i].match(/^\s*([A-Za-z0-9_]+)\s*=\s*["']?(#[0-9A-Fa-f]{6})/)
-      if (match) found[match[1]] = match[2]
-    }
-    root.themeOrange = found.orange || found.color3 || found.yellow || ""
-    root.themeBgLight = found.lighter_background || ""
-    root.themeSel = found.selection || found.selection_background || ""
-    root.themeFgBright = found.bright_foreground || found.light_foreground || ""
-    root.themeFgDim = found.dark_foreground || ""
-    root.themeBgDark = found.dark_background || ""
-  }
-
   function isHistoryFile(path) {
     var file = String(path || "")
     var dir = root.historyDir
@@ -239,15 +224,6 @@ Item {
 
   ListModel { id: rowsModel }
 
-  FileView {
-    id: themeFile
-    path: Color.currentThemePath + "/colors.toml"
-    watchChanges: true
-    printErrors: false
-    onLoaded: root.applyTheme(text())
-    onFileChanged: reload()
-  }
-
   Timer {
     id: readTimer
     interval: 80
@@ -293,7 +269,11 @@ Item {
   Item {
     id: frame
     anchors.fill: parent
-    anchors.margins: 12
+    anchors.leftMargin: 12
+    anchors.rightMargin: 12
+    anchors.bottomMargin: 12
+    // The column is already inset with the meter bank. Another top margin drops 通知 below the percentages.
+    anchors.topMargin: 0
 
     Item {
       id: header

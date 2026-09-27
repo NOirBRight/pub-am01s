@@ -22,10 +22,7 @@ if (process.argv[2] === '--version') {
 EXPECTED_MENU = {
     "icon": "󰔡",
     "label": "PUB 设置",
-    "action": (
-        'mkdir -p "${XDG_RUNTIME_DIR:-$HOME/.cache}/pub-am01s" && '
-        'touch "${XDG_RUNTIME_DIR:-$HOME/.cache}/pub-am01s/open-settings"'
-    ),
+    "action": "omarchy-shell shell summon noirbright.pub-am01s",
 }
 
 
