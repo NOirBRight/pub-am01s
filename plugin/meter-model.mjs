@@ -45,6 +45,30 @@ export function layoutMeterBank(snapshot, canvasWidth) {
   }
 }
 
+// Every Quota Window for Detail. Signed-out and unknown providers are absent.
+export function detailFor(snapshot, providerId) {
+  const wanted = text(providerId)
+  const list = snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)
+    ? (asArray(snapshot.providers) || [])
+    : []
+  for (let i = 0; i < list.length; i += 1) {
+    const provider = list[i]
+    if (!provider || typeof provider !== 'object' || Array.isArray(provider)) continue
+    if (text(provider.id) !== wanted) continue
+    if (provider.errorKind === 'signed-out') return null
+    const reason = errorText(provider)
+    return {
+      id: text(provider.id),
+      name: text(provider.name),
+      plan: text(provider.plan),
+      failed: reason !== null,
+      reason,
+      windows: windowsOf(provider).map(presentDetailWindow),
+    }
+  }
+  return null
+}
+
 function asArray(value) {
   if (Array.isArray(value)) return value
   // QML property var turns arrays into list objects that fail Array.isArray.
@@ -99,6 +123,18 @@ function presentProvider(provider, width, wide) {
     error: errorText(provider),
     displayName: narrow ? shortName : name,
     windows: shown.map(window => presentWindow(window, wide)),
+  }
+}
+
+function presentDetailWindow(window) {
+  const remaining = typeof window.remaining === 'number' && Number.isFinite(window.remaining) ? window.remaining : null
+  return {
+    id: text(window.id),
+    label: text(window.label),
+    resetLabel: text(window.resetLabel),
+    remaining,
+    level: levelFor(remaining),
+    primary: window.primary === true,
   }
 }
 
