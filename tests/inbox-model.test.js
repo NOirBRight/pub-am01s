@@ -85,9 +85,9 @@ describe("readInbox", () => {
     ], now)
 
     expect(rows.map((row) => row.icon)).toEqual([
-      { kind: "system", names: ["omarchy"] },
+      { kind: "system", glyph: "\u{f009a}", names: ["omarchy"] },
       { kind: "glyph", glyph: "\u{f0431}", names: [] },
-      { kind: "system", names: ["omarchy"] },
+      { kind: "system", glyph: "\u{f009a}", names: ["omarchy"] },
       { kind: "initial", letter: "O", color: expect.stringMatching(/^#[0-9a-f]{6}$/), names: ["omp"] },
     ])
     expect(rows.map((row) => row.system)).toEqual([true, true, true, false])

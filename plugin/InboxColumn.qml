@@ -669,16 +669,14 @@ Item {
                 anchors.centerIn: parent
                 visible: noteIcon.status !== Image.Ready
                 text: {
-                  if (note.model.iconKind === "glyph") return note.model.iconGlyph
-                  // Omarchy's bell, as on its own "No recent notifications" toast.
-                  if (note.model.iconKind === "system") return "\u{f009a}"
+                  if (note.model.iconGlyph) return note.model.iconGlyph
                   if (note.model.iconKind === "initial" && note.model.iconLetter) return note.model.iconLetter
                   var app = String(note.model.app || "")
                   return app.length > 0 ? app.charAt(0).toUpperCase() : "?"
                 }
                 font.family: Style.font.family
                 font.pixelSize: 19
-                font.bold: note.model.iconKind !== "glyph" && note.model.iconKind !== "system"
+                font.bold: !note.model.iconGlyph
                 color: root.bgDark
               }
               Image {

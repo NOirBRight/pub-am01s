@@ -91,19 +91,19 @@ function filePath(raw) {
   return path.charAt(0) === "/" ? path : ""
 }
 
-// Omarchy's own toasts and bare notify-send come from no application. They get
-// their glyph, as on Omarchy's popup card, or the Omarchy mark.
 function systemSender(app) {
   return SYSTEM_SENDERS.indexOf(oneLine(app)) >= 0
 }
 
+// A system toast gets its glyph, as on Omarchy's popup card, or the Omarchy
+// mark with Omarchy's bell as the fallback text.
 function iconFrom(appIcon, app, glyph) {
   var names = iconCandidates(app, appIcon)
   var raw = oneLine(appIcon)
   if (!raw && systemSender(app)) {
     var mark = oneLine(glyph)
     if (mark) return { kind: "glyph", glyph: mark, names: [] }
-    return { kind: "system", names: ["omarchy"] }
+    return { kind: "system", glyph: "\u{f009a}", names: ["omarchy"] }
   }
   if (!raw) return initialIcon(app)
   if (raw.indexOf("file://") === 0 || raw.charAt(0) === "/") {
