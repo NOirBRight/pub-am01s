@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer"
 import { describe, expect, it } from "vitest"
-import { readInbox, swipeDecision, textFromBase64 } from "../plugin/inbox-model.mjs"
+import { focusAddress, readInbox, swipeDecision, textFromBase64 } from "../plugin/inbox-model.mjs"
 
 const now = 1790441347328
 
@@ -123,6 +123,64 @@ describe("readInbox", () => {
     expect(decoded).toBe(text)
     expect(rows[0].summary).toBe("群")
     expect(rows[0].body).toBe(body)
+  })
+})
+
+describe("focusAddress", () => {
+  const clients = [
+    {
+      class: "org.omarchy.agent",
+      initialClass: "org.omarchy.agent",
+      initialTitle: "foot",
+      title: "π > 调查 Omarchy 平铺切换默认行为",
+      address: "0x59af9bcb4810",
+    },
+    {
+      class: "org.omarchy.agent",
+      initialClass: "org.omarchy.agent",
+      initialTitle: "foot",
+      title: "π ⠙ 修复豆包说接口兼容性问题",
+      address: "0x59af9bbe2fa0",
+    },
+    {
+      class: "com.t3tools.T3Code",
+      initialClass: "com.t3tools.T3Code",
+      title: "T3 Code",
+      address: "0x59af9bb330c0",
+    },
+  ]
+
+  it("focuses the agent window whose title contains the summary", () => {
+    expect(focusAddress(clients, {
+      app: "omp",
+      summary: "调查 Omarchy 平铺切换默认行为",
+    })).toBe("0x59af9bcb4810")
+  })
+
+  it("focuses T3 when the app name is spaced and the class is not", () => {
+    const t3 = {
+      class: "com.t3tools.T3Code",
+      initialClass: "com.t3tools.T3Code",
+      title: "T3 Code (Nightly)",
+      address: "0x59af9bb330c0",
+    }
+    expect(focusAddress(clients.concat([t3]), { app: "T3 Code", summary: "build finished" })).toBe("0x59af9bb330c0")
+    expect(focusAddress([t3], { app: "T3 Code (Nightly)", summary: "hello" })).toBe("0x59af9bb330c0")
+  })
+
+  it("falls back to the sender class, then an agent launch title", () => {
+    expect(focusAddress(clients, { app: "T3Code", summary: "" })).toBe("0x59af9bb330c0")
+    expect(focusAddress([
+      { class: "org.omarchy.agent", initialClass: "org.omarchy.agent", initialTitle: "kitty", title: "shell", address: "0xabc" },
+    ], { app: "kitty", summary: "nope" })).toBe("0xabc")
+  })
+
+  it("returns nothing for a bad address or no match", () => {
+    expect(focusAddress([
+      { class: "Slack", title: "Slack", address: "not-an-address" },
+    ], { app: "Slack", summary: "Slack" })).toBe("")
+    expect(focusAddress(clients, { app: "missing", summary: "no such task" })).toBe("")
+    expect(focusAddress(null, null)).toBe("")
   })
 })
 

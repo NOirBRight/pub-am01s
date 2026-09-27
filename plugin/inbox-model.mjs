@@ -140,6 +140,74 @@ function readInbox(files, nowMs) {
   return unique
 }
 
+// No execArgv: focus the window this notification is about. A task summary
+// sits in the agent terminal title; otherwise match the sender the way
+// omarchy-hyprland-focus-app does.
+function focusAddress(clients, note) {
+  var list = Array.isArray(clients) ? clients : []
+  var summary = oneLine(note && note.summary)
+  var app = oneLine(note && note.app)
+  var address = ""
+  if (summary.length >= 2) address = addressByTitle(list, summary)
+  if (!address && app) address = addressByApp(list, app)
+  return safeAddress(address)
+}
+
+function safeAddress(value) {
+  var text = String(value || "")
+  return /^0x[0-9a-fA-F]+$/.test(text) ? text : ""
+}
+
+function addressByTitle(list, summary) {
+  var matches = []
+  for (var i = 0; i < list.length; i++) {
+    var client = list[i] || {}
+    if (String(client.title || "").indexOf(summary) >= 0) matches.push(client)
+  }
+  return pickAddress(matches)
+}
+
+function compact(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "")
+}
+
+// "T3 Code" is not a substring of class com.t3tools.T3Code. Compare the
+// letters of the app name with the class and the window title.
+function addressByApp(list, app) {
+  var wanted = compact(app)
+  if (wanted.length < 3) return ""
+  var matches = []
+  for (var i = 0; i < list.length; i++) {
+    var client = list[i] || {}
+    var fields = [client.class, client.initialClass, client.title, client.initialTitle]
+    var hit = false
+    for (var j = 0; j < fields.length && !hit; j++) {
+      var field = compact(fields[j])
+      if (!field) continue
+      if (field.indexOf(wanted) >= 0) hit = true
+      else if (field.length >= 4 && wanted.indexOf(field) >= 0) hit = true
+    }
+    if (hit) matches.push(client)
+  }
+  return pickAddress(matches)
+}
+
+function pickAddress(matches) {
+  if (!matches.length) return ""
+  var agents = []
+  for (var i = 0; i < matches.length; i++) {
+    var client = matches[i]
+    if (client.class === "org.omarchy.agent" || client.initialClass === "org.omarchy.agent")
+      agents.push(client)
+  }
+  var pool = agents.length ? agents : matches
+  var best = pool[0]
+  for (var j = 1; j < pool.length; j++) {
+    if (String(pool[j].title || "").length < String(best.title || "").length) best = pool[j]
+  }
+  return String(best.address || "")
+}
+
 function swipeDecision(dx, width) {
   var distance = Number(dx)
   var rowWidth = Number(width)
@@ -202,4 +270,4 @@ function textFromBase64(b64) {
   return decodeUtf8(bytes)
 }
 
-export { readInbox, swipeDecision, textFromBase64 }
+export { focusAddress, readInbox, swipeDecision, textFromBase64 }

@@ -19,11 +19,10 @@ Item {
   }
   readonly property string historyDir: stateHome + "/omarchy/notifications/history"
 
-  readonly property var notificationService: {
-    if (!shell || !shell.firstPartyServiceFor) return null
-    return shell.firstPartyServiceFor("omarchy.notifications")
-  }
-  readonly property bool dnd: notificationService ? notificationService.doNotDisturb === true : false
+  // Third-party plugins cannot read the notification service. DND is the
+  // shell IPC plus the file that service writes.
+  property bool dnd: false
+  readonly property string dndPath: String(Quickshell.env("HOME") || "") + "/.local/state/omarchy/notifications.json"
 
   property string themeOrange: ""
   property string themeBgLight: ""
@@ -44,6 +43,11 @@ Item {
   property bool readQueued: false
   property int activeSerial: 0
   property int appliedSerial: -1
+  property bool focusQueued: false
+  property string pendingFocusApp: ""
+  property string pendingFocusSummary: ""
+  property int pendingFocusSerial: 0
+  property int focusSerial: 0
 
   // path \t base64, one history file per line. textFromBase64 owns UTF-8.
   readonly property string readScript:
@@ -197,6 +201,44 @@ Item {
     Util.execArgv(argv)
   }
 
+  function activate(model) {
+    if (!model) return
+    if (model.actionJson) {
+      root.openAction(model.actionJson)
+      return
+    }
+    root.focusSerial += 1
+    root.pendingFocusSerial = root.focusSerial
+    root.pendingFocusApp = String(model.app || "")
+    root.pendingFocusSummary = String(model.summary || "")
+    if (focusProc.running) {
+      root.focusQueued = true
+      return
+    }
+    root.startFocus()
+  }
+
+  function startFocus() {
+    focusProc.command = ["hyprctl", "clients", "-j"]
+    focusProc.running = true
+  }
+
+  function finishFocus(payload) {
+    var serial = root.pendingFocusSerial
+    var clients = []
+    try { clients = JSON.parse(String(payload || "")) } catch (e) { clients = [] }
+    if (serial !== root.pendingFocusSerial) return
+    var address = InboxModel.focusAddress(clients, {
+      app: root.pendingFocusApp,
+      summary: root.pendingFocusSummary,
+    })
+    if (!address) return
+    Quickshell.execDetached([
+      "hyprctl", "dispatch",
+      "hl.dsp.focus({ window = \"address:" + address + "\" })",
+    ])
+  }
+
   function removePath(path) {
     for (var i = rowsModel.count - 1; i >= 0; i--) {
       if (rowsModel.get(i).path === path) rowsModel.remove(i, 1)
@@ -216,13 +258,40 @@ Item {
     Qt.callLater(function() { root.removePath(path) })
   }
 
+  function applyDnd(raw) {
+    try {
+      var parsed = JSON.parse(String(raw || ""))
+      root.dnd = !!(parsed && parsed.dnd === true)
+    } catch (e) {}
+  }
+
   function toggleDnd() {
-    if (root.notificationService)
-      root.notificationService.setDoNotDisturb(!root.dnd)
+    root.dnd = !root.dnd
+    Quickshell.execDetached(["omarchy-shell", "notifications", "toggleDnd"])
     wiggle.restart()
   }
 
+  function clearHistory() {
+    var paths = []
+    for (var i = 0; i < rowsModel.count; i++) {
+      var path = String(rowsModel.get(i).path || "")
+      if (root.isHistoryFile(path)) paths.push(path)
+    }
+    rowsModel.clear()
+    if (paths.length > 0) Quickshell.execDetached(["rm", "-f", "--"].concat(paths))
+    Quickshell.execDetached(["omarchy-shell", "notifications", "clear"])
+  }
+
   ListModel { id: rowsModel }
+
+  FileView {
+    id: dndFile
+    path: root.dndPath
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.applyDnd(text())
+    onFileChanged: reload()
+  }
 
   Timer {
     id: readTimer
@@ -244,6 +313,22 @@ Item {
     command: ["bash", "-c", root.watchScript, "--", root.historyDir]
     stdout: SplitParser {
       onRead: function(line) { root.scheduleRead() }
+    }
+  }
+
+  Process {
+    id: focusProc
+    running: false
+    stdout: StdioCollector {
+      id: focusOut
+      waitForEnd: true
+      onStreamFinished: root.finishFocus(text)
+    }
+    onExited: {
+      if (root.focusQueued) {
+        root.focusQueued = false
+        Qt.callLater(function() { root.startFocus() })
+      }
     }
   }
 
@@ -344,6 +429,31 @@ Item {
             anchors.fill: parent
             anchors.margins: -6
             onClicked: root.toggleDnd()
+          }
+        }
+
+        Rectangle {
+          id: clearButton
+          width: 36
+          height: 36
+          radius: 18
+          color: root.bgLight
+          opacity: rowsModel.count > 0 ? 1 : 0.35
+          scale: clearHit.pressed ? 0.96 : 1
+          Behavior on scale { NumberAnimation { duration: 100 } }
+          Text {
+            anchors.centerIn: parent
+            text: "\uf1f8"
+            font.family: Style.font.family
+            font.pixelSize: 15
+            color: root.fgBright
+          }
+          MouseArea {
+            id: clearHit
+            anchors.fill: parent
+            anchors.margins: -6
+            enabled: rowsModel.count > 0
+            onClicked: root.clearHistory()
           }
         }
 
@@ -607,7 +717,7 @@ Item {
               var decision = InboxModel.swipeDecision(card.x, note.width)
               if (decision === "commit") root.deleteHistory(note.model.path)
               else {
-                if (Math.abs(card.x) < 8) root.openAction(note.model.actionJson)
+                if (Math.abs(card.x) < 8) root.activate(note.model)
                 card.x = 0
               }
             }
