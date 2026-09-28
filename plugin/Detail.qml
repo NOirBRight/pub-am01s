@@ -168,11 +168,11 @@ Item {
       anchors.horizontalCenter: parent.horizontalCenter
 
       Repeater {
-        model: root.barWindows
+        model: stage.count
         delegate: Item {
           id: slot
-          required property var modelData
           required property int index
+          readonly property var win: root.barWindows[slot.index] || ({})
 
           width: stage.slotW
           height: big.height
@@ -187,10 +187,10 @@ Item {
             CountText {
               anchors.horizontalCenter: parent.horizontalCenter
               anchors.bottom: parent.bottom
-              value: slot.modelData.remaining
+              value: slot.win.remaining
               delayMs: slot.index * 80
               size: 22
-              digitColor: slot.modelData.primary ? Color.foreground : Color.muted
+              digitColor: slot.win.primary ? Color.foreground : Color.muted
             }
           }
 
@@ -208,11 +208,11 @@ Item {
               wrapMode: Text.NoWrap
               maximumLineCount: 1
               textFormat: Text.PlainText
-              text: slot.modelData.label
+              text: slot.win.label
               font.family: Style.font.resolvedFamily
               font.pixelSize: 13
               font.bold: false
-              color: slot.modelData.primary ? Color.foreground : Color.muted
+              color: slot.win.primary ? Color.foreground : Color.muted
             }
             Text {
               width: parent.width
@@ -221,10 +221,10 @@ Item {
               wrapMode: Text.NoWrap
               maximumLineCount: 1
               textFormat: Text.PlainText
-              text: slot.modelData.resetLabel
+              text: slot.win.resetLabel
               font.family: Style.font.resolvedFamily
               font.pixelSize: 12
-              color: slot.modelData.primary ? Color.foreground : Color.muted
+              color: slot.win.primary ? Color.foreground : Color.muted
             }
           }
 
@@ -236,10 +236,10 @@ Item {
             anchors.bottomMargin: 8
             width: 34
             seg: 7
-            value: slot.modelData.remaining === null || slot.modelData.remaining === undefined ? 0 : slot.modelData.remaining
+            value: slot.win.remaining === null || slot.win.remaining === undefined ? 0 : slot.win.remaining
             delayMs: slot.index * 80
-            litColor: root.levelColor(slot.modelData.level)
-            pulse: slot.modelData.level === "danger"
+            litColor: root.levelColor(slot.win.level)
+            pulse: slot.win.level === "danger"
           }
         }
       }

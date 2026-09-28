@@ -86,26 +86,28 @@ Item {
     width: parent.width
     height: parent.height
 
+    // Count models keep delegates alive across Snapshot refreshes, so bars move
+    // from their current level instead of being rebuilt and refilled from zero.
     Repeater {
-      model: root.layout.providers
+      model: root.layout.providers.length
       delegate: Item {
         id: col
-        required property var modelData
         required property int index
+        readonly property var provider: root.layout.providers[col.index] || ({ windows: [], width: 0 })
 
-        readonly property bool failed: col.modelData.error !== null && col.modelData.error !== undefined && String(col.modelData.error).length > 0
+        readonly property bool failed: col.provider.error !== null && col.provider.error !== undefined && String(col.provider.error).length > 0
         // A later 429 still carries the last good windows. Show those bars and only mark the failure.
         readonly property bool hasQuota: {
-          var windows = col.modelData.windows
+          var windows = col.provider.windows
           var count = windows && windows.length ? windows.length : 0
           for (var i = 0; i < count; i++) {
             if (typeof windows[i].remaining === "number") return true
           }
           return false
         }
-        readonly property url iconSource: Qt.resolvedUrl("icons/" + String(col.modelData.id || "") + ".svg")
+        readonly property url iconSource: Qt.resolvedUrl("icons/" + String(col.provider.id || "") + ".svg")
 
-        width: col.modelData.width
+        width: col.provider.width
         height: cols.height
 
         Rectangle {
@@ -155,7 +157,7 @@ Item {
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
               elide: Text.ElideRight
-              text: col.modelData.displayName
+              text: col.provider.displayName
               color: Color.urgent
               font.family: Style.font.resolvedFamily
               font.pixelSize: 12
@@ -165,7 +167,7 @@ Item {
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
               wrapMode: Text.Wrap
-              text: col.modelData.error
+              text: col.provider.error
               color: Color.urgent
               font.family: Style.font.resolvedFamily
               font.pixelSize: 12
@@ -191,7 +193,7 @@ Item {
               }
               Text {
                 id: nameText
-                text: col.modelData.displayName
+                text: col.provider.displayName
                 width: Math.max(0, head.width - 18 - head.spacing - (planText.visible ? planText.implicitWidth + head.spacing : 0))
                 elide: Text.ElideRight
                 font.family: Style.font.resolvedFamily
@@ -201,8 +203,8 @@ Item {
               }
               Text {
                 id: planText
-                visible: col.modelData.width >= 170 && String(col.modelData.plan || "").length > 0
-                text: col.modelData.plan || ""
+                visible: col.provider.width >= 170 && String(col.provider.plan || "").length > 0
+                text: col.provider.plan || ""
                 font.family: Style.font.resolvedFamily
                 font.pixelSize: 12
                 color: Color.muted
@@ -214,34 +216,34 @@ Item {
               y: 34
               width: parent.width
               height: parent.height - 34
-              readonly property int count: Math.max(1, col.modelData.windows.length)
+              readonly property int count: Math.max(1, col.provider.windows.length)
 
               Repeater {
-                model: col.modelData.windows
+                model: col.provider.windows.length
                 delegate: Item {
                   id: slot
-                  required property var modelData
                   required property int index
+                  readonly property var win: col.provider.windows[slot.index] || ({})
                   width: subs.width / subs.count
                   height: subs.height
 
                   CountText {
                     anchors.horizontalCenter: parent.horizontalCenter
                     y: 4
-                    value: slot.modelData.remaining
+                    value: slot.win.remaining
                     delayMs: col.index * 70 + 120 + slot.index * 60
-                    size: slot.modelData.primary ? 24 : 18
-                    digitColor: slot.modelData.primary ? Color.foreground : Color.muted
+                    size: slot.win.primary ? 24 : 18
+                    digitColor: slot.win.primary ? Color.foreground : Color.muted
                   }
                   SegBar {
                     anchors.horizontalCenter: parent.horizontalCenter
                     y: 40
                     width: 20
                     height: parent.height - 40 - 40
-                    value: slot.modelData.remaining === null || slot.modelData.remaining === undefined ? 0 : slot.modelData.remaining
+                    value: slot.win.remaining === null || slot.win.remaining === undefined ? 0 : slot.win.remaining
                     delayMs: col.index * 70 + 120 + slot.index * 60
-                    litColor: root.levelColor(slot.modelData.level)
-                    pulse: slot.modelData.level === "danger"
+                    litColor: root.levelColor(slot.win.level)
+                    pulse: slot.win.level === "danger"
                   }
                   Column {
                     anchors.bottom: parent.bottom
@@ -252,17 +254,17 @@ Item {
                       width: parent.width
                       horizontalAlignment: Text.AlignHCenter
                       elide: Text.ElideRight
-                      text: slot.modelData.displayLabel
+                      text: slot.win.displayLabel
                       font.family: Style.font.resolvedFamily
                       font.pixelSize: 12
                       font.bold: false
-                      color: slot.modelData.primary ? Color.foreground : Color.muted
+                      color: slot.win.primary ? Color.foreground : Color.muted
                     }
                     Text {
                       width: parent.width
                       horizontalAlignment: Text.AlignHCenter
                       elide: Text.ElideRight
-                      text: slot.modelData.resetAbbrev
+                      text: slot.win.resetAbbrev
                       font.family: Style.font.resolvedFamily
                       font.pixelSize: 11
                       color: Color.muted
@@ -280,7 +282,7 @@ Item {
             CountText {
               anchors.horizontalCenter: parent.horizontalCenter
               y: 2
-              value: col.modelData.windows.length > 0 ? col.modelData.windows[0].remaining : null
+              value: col.provider.windows.length > 0 ? col.provider.windows[0].remaining : null
               delayMs: col.index * 70 + 120
               size: 20
               digitColor: col.failed ? Color.muted : Color.foreground
@@ -290,10 +292,10 @@ Item {
               y: 36
               width: 20
               height: parent.height - 36 - 48
-              value: col.modelData.windows.length > 0 && col.modelData.windows[0].remaining !== null && col.modelData.windows[0].remaining !== undefined ? col.modelData.windows[0].remaining : 0
+              value: col.provider.windows.length > 0 && col.provider.windows[0].remaining !== null && col.provider.windows[0].remaining !== undefined ? col.provider.windows[0].remaining : 0
               delayMs: col.index * 70 + 120
-              litColor: root.levelColor(col.modelData.windows.length > 0 ? col.modelData.windows[0].level : "none")
-              pulse: col.modelData.windows.length > 0 && col.modelData.windows[0].level === "danger"
+              litColor: root.levelColor(col.provider.windows.length > 0 ? col.provider.windows[0].level : "none")
+              pulse: col.provider.windows.length > 0 && col.provider.windows[0].level === "danger"
             }
             ProviderIcon {
               anchors.horizontalCenter: parent.horizontalCenter
@@ -310,7 +312,7 @@ Item {
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
               elide: Text.ElideRight
-              text: col.modelData.displayName
+              text: col.provider.displayName
               font.family: Style.font.resolvedFamily
               font.pixelSize: 11
               color: col.failed ? Color.urgent : Color.muted
@@ -323,7 +325,7 @@ Item {
           anchors.fill: parent
           onClicked: {
             root.detailOriginX = col.x + col.width / 2
-            root.detailShownId = String(col.modelData.id || "")
+            root.detailShownId = String(col.provider.id || "")
             root.detailOpen = true
           }
         }
