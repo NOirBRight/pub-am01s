@@ -55,15 +55,6 @@ Item {
     return null
   }
 
-  readonly property string formTitle: {
-    var row = root.activeProvider
-    if (!row) return ""
-    var name = String(row.name || row.id || "")
-    if (root.activeMode === "cli") return name + " · 官方 CLI"
-    if (root.activeMode === "paste") return name + " · 粘贴密钥"
-    return name
-  }
-
   function trimText(value) {
     return String(value || "").replace(/^\s+|\s+$/g, "")
   }
@@ -299,19 +290,34 @@ Item {
   }
 
   readonly property int providerCount: root.providers && root.providers.length ? root.providers.length : 0
+  readonly property int enabledCount: {
+    var n = 0
+    for (var i = 0; i < root.providerCount; i++) if (root.providers[i] && root.providers[i].enabled === true) n++
+    return n
+  }
   readonly property bool messageUrgent: root.status === "error" || (root.status === "ok" && root.message.length > 0)
   readonly property bool showEditors: root.status === "ok"
+  readonly property bool formOpen: root.activeMode === "cli" || root.activeMode === "paste"
+  // One Provider row is open at a time; a login form lives inside the open row.
+  property string expandedId: ""
 
   // Menu surfaces in the theme are often translucent. This card sits over
   // whatever window is focused, so the fill and the ink have to be opaque.
   readonly property color cardColor: Qt.rgba(Color.background.r, Color.background.g, Color.background.b, 1)
-  readonly property color rowColor: Qt.lighter(cardColor, 1.45)
-  readonly property color lineColor: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.28)
   readonly property color ink: Color.foreground
-  readonly property color accentInk: {
-    var accent = Color.accent
-    var luminance = 0.2126 * accent.r + 0.7152 * accent.g + 0.0722 * accent.b
-    return luminance > 0.55 ? "#141816" : "#f6f3ea"
+  readonly property color dim: Qt.darker(Color.foreground, 1.4)
+  readonly property int pad: Style.spacing.panelPadding
+
+  function methodCaption(row) {
+    var kind = String(row && row.credentialKind || "")
+    if (kind === "cli") return "用官方 CLI 在浏览器里登录"
+    if (kind === "key") return "粘贴 API 密钥"
+    if (kind === "both") return "官方 CLI 登录，或粘贴 API 密钥"
+    return ""
+  }
+
+  function toggleExpanded(id) {
+    root.expandedId = root.expandedId === id ? "" : id
   }
 
   function requestClose() {
@@ -341,13 +347,17 @@ Item {
       focus: true
 
       Keys.onEscapePressed: function(event) {
-        root.requestClose()
+        if (root.formOpen) root.cancelActive()
+        else root.requestClose()
         event.accepted = true
       }
 
       Rectangle {
         anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, 0.62)
+        color: "black"
+        opacity: 0
+        Component.onCompleted: opacity = 0.55
+        Behavior on opacity { NumberAnimation { duration: 180 } }
 
         MouseArea {
           anchors.fill: parent
@@ -357,13 +367,22 @@ Item {
 
       Rectangle {
         id: card
-        width: Math.min(480, Math.max(280, parent.width - 64))
-        height: Math.min(640, Math.max(240, parent.height - 80))
+        readonly property real maxHeight: Math.max(240, parent.height - 96)
+        width: Math.min(560, Math.max(320, parent.width - 64))
+        height: Math.min(card.maxHeight, head.height + list.contentHeight + root.pad * 2 + Style.spacing.panelGap)
         anchors.centerIn: parent
-        radius: Math.max(12, Style.cornerRadius)
+        radius: Style.cornerRadius
         color: root.cardColor
         border.width: 1
-        border.color: root.lineColor
+        border.color: Color.popups.border
+        clip: true
+
+        opacity: 0
+        scale: 0.97
+        Component.onCompleted: { opacity = 1; scale = 1 }
+        Behavior on opacity { NumberAnimation { duration: 180 } }
+        Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+        Behavior on height { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
         MouseArea {
           anchors.fill: parent
@@ -371,406 +390,584 @@ Item {
         }
 
         Column {
-          id: body
-          anchors.fill: parent
-          anchors.margins: 18
-          spacing: 14
+          id: head
+          x: root.pad
+          y: root.pad
+          width: card.width - root.pad * 2
+          spacing: Style.spacing.panelGap
 
-          Row {
+          Item {
             width: parent.width
-            height: 32
-            spacing: 12
+            height: Math.max(titleCol.implicitHeight, closeButton.implicitHeight)
 
             Text {
-              width: parent.width - closeButton.width - parent.spacing
-              height: parent.height
-              text: "设置"
-              color: root.ink
+              id: gear
+              anchors.verticalCenter: parent.verticalCenter
+              text: ""
+              color: Color.accent
               font.family: Style.font.resolvedFamily
-              font.pixelSize: Style.font.heading
-              font.bold: true
-              verticalAlignment: Text.AlignVCenter
-              elide: Text.ElideRight
-              textFormat: Text.PlainText
+              font.pixelSize: Style.font.display
             }
-
-            Rectangle {
-              id: closeButton
-              width: 64
-              height: 32
-              radius: 16
-              color: root.rowColor
-
-              Text {
-                anchors.centerIn: parent
-                text: "关闭"
-                color: root.ink
-                font.family: Style.font.resolvedFamily
-                font.pixelSize: Style.font.body
-                textFormat: Text.PlainText
-              }
-
-              MouseArea {
-                anchors.fill: parent
-                onClicked: root.requestClose()
-              }
-            }
-          }
-
-          Text {
-            width: parent.width
-            visible: root.message.length > 0
-            text: root.message
-            color: root.messageUrgent ? Color.urgent : root.ink
-            font.family: Style.font.resolvedFamily
-            font.pixelSize: Style.font.body
-            wrapMode: Text.Wrap
-            textFormat: Text.PlainText
-          }
-
-          Text {
-            width: parent.width
-            visible: root.notice.length > 0
-            text: root.notice
-            color: root.noticeUrgent ? Color.urgent : root.ink
-            font.family: Style.font.resolvedFamily
-            font.pixelSize: Style.font.body
-            wrapMode: Text.Wrap
-            textFormat: Text.PlainText
-          }
-
-          Row {
-            width: parent.width
-            height: 36
-            visible: root.showEditors
-            spacing: 12
-
-            Text {
-              width: parent.width - modeSwitch.width - parent.spacing
-              height: parent.height
-              text: "百分比读法"
-              color: root.ink
-              font.family: Style.font.resolvedFamily
-              font.pixelSize: Style.font.subtitle
-              verticalAlignment: Text.AlignVCenter
-              elide: Text.ElideRight
-              textFormat: Text.PlainText
-            }
-
-            Row {
-              id: modeSwitch
-              height: 32
-              spacing: 0
-
-              Rectangle {
-                width: 72
-                height: 32
-                radius: 8
-                color: root.remainingMode ? Color.accent : root.rowColor
-
-                Text {
-                  anchors.centerIn: parent
-                  text: "剩余"
-                  color: root.remainingMode ? root.accentInk : root.ink
-                  font.family: Style.font.resolvedFamily
-                  font.pixelSize: Style.font.body
-                  textFormat: Text.PlainText
-                }
-
-                MouseArea {
-                  anchors.fill: parent
-                  onClicked: if (!root.remainingMode) root.remainingModeToggled(true)
-                }
-              }
-
-              Rectangle {
-                width: 72
-                height: 32
-                radius: 8
-                color: root.remainingMode ? root.rowColor : Color.accent
-
-                Text {
-                  anchors.centerIn: parent
-                  text: "已用"
-                  color: root.remainingMode ? root.ink : root.accentInk
-                  font.family: Style.font.resolvedFamily
-                  font.pixelSize: Style.font.body
-                  textFormat: Text.PlainText
-                }
-
-                MouseArea {
-                  anchors.fill: parent
-                  onClicked: if (root.remainingMode) root.remainingModeToggled(false)
-                }
-              }
-            }
-          }
-
-          Flickable {
-            width: parent.width
-            height: Math.max(0, parent.height - y)
-            visible: root.showEditors
-            clip: true
-            contentWidth: width
-            contentHeight: providerColumn.implicitHeight
-            flickableDirection: Flickable.VerticalFlick
-            boundsBehavior: Flickable.StopAtBounds
 
             Column {
-              id: providerColumn
+              id: titleCol
+              anchors.left: gear.right
+              anchors.leftMargin: Style.space(14)
+              anchors.right: closeButton.left
+              anchors.rightMargin: Style.space(12)
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(2)
+
+              Text {
+                width: parent.width
+                text: "PUB 设置"
+                color: root.ink
+                font.family: Style.font.resolvedFamily
+                font.pixelSize: Style.font.heading
+                font.bold: true
+                elide: Text.ElideRight
+                textFormat: Text.PlainText
+              }
+              Text {
+                width: parent.width
+                text: root.showEditors
+                  ? "AM01S 副屏 · " + root.enabledCount + " / " + root.providerCount + " 个 Provider 显示中"
+                  : "AM01S 副屏"
+                color: root.dim
+                font.family: Style.font.resolvedFamily
+                font.pixelSize: Style.font.caption
+                elide: Text.ElideRight
+                textFormat: Text.PlainText
+              }
+            }
+
+            Button {
+              id: closeButton
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              iconText: ""
+              tooltipText: "关闭 (Esc)"
+              onClicked: root.requestClose()
+            }
+          }
+
+          Banner {
+            text: root.message
+            urgent: root.messageUrgent
+          }
+
+          Banner {
+            text: root.notice
+            urgent: root.noticeUrgent
+          }
+
+          Column {
+            width: parent.width
+            visible: root.showEditors
+            spacing: Style.spacing.rowGap
+
+            PanelSectionHeader { text: "显示" }
+
+            Item {
               width: parent.width
-              spacing: 8
+              height: Math.max(modeLabel.implicitHeight, modeGroup.implicitHeight)
 
               Column {
-                id: loginForm
-                width: parent.width
-                visible: root.activeMode === "cli" || root.activeMode === "paste"
-                spacing: 8
+                id: modeLabel
+                anchors.left: parent.left
+                anchors.right: modeGroup.left
+                anchors.rightMargin: Style.space(12)
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Style.space(2)
 
                 Text {
                   width: parent.width
-                  text: root.formTitle
+                  text: "百分比读法"
                   color: root.ink
                   font.family: Style.font.resolvedFamily
-                  font.pixelSize: Style.font.subtitle
-                  font.bold: true
+                  font.pixelSize: Style.font.body
                   elide: Text.ElideRight
                   textFormat: Text.PlainText
                 }
-
                 Text {
                   width: parent.width
-                  visible: root.activeMode === "cli" && !(root.activeProvider && root.activeProvider.codeEntry)
-                  text: "正在等待官方 CLI 结束。"
-                  color: root.ink
+                  text: root.remainingMode ? "Level Bar 越满，剩得越多" : "Level Bar 越满，用得越多"
+                  color: root.dim
                   font.family: Style.font.resolvedFamily
                   font.pixelSize: Style.font.caption
-                  wrapMode: Text.Wrap
+                  elide: Text.ElideRight
                   textFormat: Text.PlainText
-                }
-
-                Text {
-                  width: parent.width
-                  visible: root.activeMode === "cli" && root.activeProvider && root.activeProvider.codeEntry && !root.codeSent
-                  text: "如果官方页面给出授权码，粘贴到下面。"
-                  color: root.ink
-                  font.family: Style.font.resolvedFamily
-                  font.pixelSize: Style.font.caption
-                  wrapMode: Text.Wrap
-                  textFormat: Text.PlainText
-                }
-
-                TextField {
-                  id: codeField
-                  width: parent.width
-                  visible: root.activeMode === "cli" && root.activeProvider && root.activeProvider.codeEntry && !root.codeSent
-                  placeholderText: root.activeProvider && root.activeProvider.codeEntry ? String(root.activeProvider.codeEntry.hint || "") : ""
-                  foreground: root.ink
-                  accent: Color.accent
-                  font.family: Style.font.resolvedFamily
-                  onAccepted: root.submitCode(text)
-                }
-
-                Text {
-                  width: parent.width
-                  visible: root.activeMode === "cli" && root.codeSent && !root.codeRejected
-                  text: "正在验证授权码…"
-                  color: root.ink
-                  font.family: Style.font.resolvedFamily
-                  font.pixelSize: Style.font.caption
-                  textFormat: Text.PlainText
-                }
-
-                TextField {
-                  id: secretField
-                  width: parent.width
-                  visible: root.activeMode === "paste"
-                  password: true
-                  placeholderText: root.activeProvider ? String(root.activeProvider.hint || "") : ""
-                  foreground: root.ink
-                  accent: Color.accent
-                  font.family: Style.font.resolvedFamily
-                  onAccepted: {
-                    if (extraField.visible) extraField.forceActiveFocus()
-                    else root.savePaste()
-                  }
-                }
-
-                TextField {
-                  id: extraField
-                  width: parent.width
-                  visible: root.activeMode === "paste" && root.activeProvider && root.activeProvider.extra
-                  placeholderText: root.activeProvider && root.activeProvider.extra ? String(root.activeProvider.extra.hint || "") : ""
-                  foreground: root.ink
-                  accent: Color.accent
-                  font.family: Style.font.resolvedFamily
-                  onAccepted: root.savePaste()
-                }
-
-                Flow {
-                  width: parent.width
-                  spacing: 6
-
-                  LoginButton {
-                    visible: root.authUrl.length > 0
-                    label: "打开授权页"
-                    onClicked: root.openPage(root.authUrl)
-                  }
-
-                  LoginButton {
-                    visible: codeField.visible
-                    primary: true
-                    label: "提交授权码"
-                    onClicked: root.submitCode(codeField.text)
-                  }
-
-                  LoginButton {
-                    visible: root.activeMode === "paste"
-                    primary: true
-                    label: "保存"
-                    onClicked: root.savePaste()
-                  }
-
-                  LoginButton {
-                    visible: root.codeRejected
-                    primary: true
-                    label: "重新登录"
-                    onClicked: if (root.activeProvider) root.beginCli(root.activeProvider)
-                  }
-
-                  LoginButton {
-                    label: "取消"
-                    onClicked: root.cancelActive()
-                  }
                 }
               }
 
-              Repeater {
-                model: root.providers
+              ButtonGroup {
+                id: modeGroup
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                focusable: false
+                options: [{ value: "remaining", label: "剩余" }, { value: "used", label: "已用" }]
+                value: root.remainingMode ? "remaining" : "used"
+                onChanged: function(value) {
+                  var on = value === "remaining"
+                  if (on !== root.remainingMode) root.remainingModeToggled(on)
+                }
+              }
+            }
 
-                delegate: Rectangle {
-                  id: row
-                  required property var modelData
-                  required property int index
+            Item { width: 1; height: Style.spacing.md }
+            PanelSeparator {}
+            Item { width: 1; height: Style.spacing.md }
 
-                  width: providerColumn.width
-                  height: rowBody.implicitHeight + 16
-                  radius: 10
-                  color: root.rowColor
+            Item {
+              width: parent.width
+              height: providerHeader.implicitHeight
 
-                  Column {
-                    id: rowBody
-                    width: parent.width - 28
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.leftMargin: 14
-                    anchors.topMargin: 8
-                    spacing: 6
+              PanelSectionHeader {
+                id: providerHeader
+                text: "Provider"
+              }
+              Text {
+                anchors.right: parent.right
+                anchors.baseline: providerHeader.baseline
+                text: "开关决定是否上副屏 · 点一行登录"
+                color: root.dim
+                font.family: Style.font.resolvedFamily
+                font.pixelSize: Style.font.caption
+                textFormat: Text.PlainText
+              }
+            }
+          }
+        }
 
-                    Row {
-                      width: parent.width
-                      height: 36
-                      spacing: 8
+        Flickable {
+          id: list
+          visible: root.showEditors
+          anchors.top: head.bottom
+          anchors.topMargin: Style.spacing.rowGap
+          anchors.bottom: parent.bottom
+          anchors.bottomMargin: root.pad
+          x: root.pad - Style.spacing.rowPaddingX
+          width: card.width - (root.pad - Style.spacing.rowPaddingX) * 2
+          clip: true
+          contentWidth: width
+          contentHeight: root.showEditors ? providerColumn.implicitHeight : 0
+          flickableDirection: Flickable.VerticalFlick
+          boundsBehavior: Flickable.StopAtBounds
 
-                      Column {
-                        width: Math.max(0, parent.width - track.width - moves.width - parent.spacing * 2)
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 2
+          Column {
+            id: providerColumn
+            width: list.width
 
-                        Text {
-                          width: parent.width
-                          text: modelData.name || modelData.id
-                          color: root.ink
-                          font.family: Style.font.resolvedFamily
-                          font.pixelSize: Style.font.subtitle
-                          font.bold: true
-                          elide: Text.ElideRight
-                          textFormat: Text.PlainText
-                        }
+            Repeater {
+              model: root.providers
 
-                        Text {
-                          width: parent.width
-                          visible: String(modelData.loginLabel || "").length > 0
-                          text: modelData.loginLabel || ""
-                          color: Color.urgent
-                          font.family: Style.font.resolvedFamily
-                          font.pixelSize: Style.font.caption
-                          elide: Text.ElideRight
-                          textFormat: Text.PlainText
-                        }
-                      }
+              delegate: Column {
+                id: row
+                required property var modelData
+                required property int index
 
-                      Row {
-                        id: moves
-                        spacing: 4
-                        anchors.verticalCenter: parent.verticalCenter
+                readonly property string pid: String(modelData.id || "")
+                readonly property bool on: modelData.enabled === true
+                readonly property bool signedOut: String(modelData.loginLabel || "").length > 0
+                readonly property bool expanded: root.expandedId === row.pid
+                readonly property bool showsForm: row.expanded && root.formOpen && root.activeId === row.pid
 
-                        OrderButton {
-                          label: "↑"
-                          canMove: row.index > 0
-                          onClicked: root.orderMoved(String(modelData.id || ""), -1)
-                        }
-                        OrderButton {
-                          label: "↓"
-                          canMove: row.index < root.providerCount - 1
-                          onClicked: root.orderMoved(String(modelData.id || ""), 1)
-                        }
-                      }
+                width: providerColumn.width
+
+                PanelSeparator { visible: row.index > 0; strength: 0.08 }
+
+                Rectangle {
+                  id: rowFace
+                  width: parent.width
+                  height: Math.max(Style.space(52), rowLine.implicitHeight + Style.space(16))
+                  radius: Style.cornerRadius
+                  color: rowHit.pressed ? Style.pressedFill
+                    : rowHit.containsMouse ? Style.hoverFill
+                    : row.expanded ? Style.normalFill : "transparent"
+                  Behavior on color { ColorAnimation { duration: 120 } }
+
+                  MouseArea {
+                    id: rowHit
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.toggleExpanded(row.pid)
+                  }
+
+                  Item {
+                    id: rowLine
+                    anchors.fill: parent
+                    anchors.leftMargin: Style.spacing.rowPaddingX
+                    anchors.rightMargin: Style.spacing.rowPaddingX
+                    implicitHeight: nameCol.implicitHeight
+
+                    Item {
+                      id: mark
+                      width: Style.space(28)
+                      height: width
+                      anchors.verticalCenter: parent.verticalCenter
+                      opacity: row.on ? 1 : 0.45
 
                       Rectangle {
-                        id: track
-                        width: 44
-                        height: 26
-                        radius: 13
-                        anchors.verticalCenter: parent.verticalCenter
-                        color: modelData.enabled === true ? Color.accent : Color.muted
+                        anchors.fill: parent
+                        radius: width / 2
+                        color: Style.selectedFill
+                      }
+                      ProviderIcon {
+                        id: markIcon
+                        anchors.centerIn: parent
+                        width: Style.space(18)
+                        height: width
+                        source: Qt.resolvedUrl("icons/" + row.pid + ".svg")
+                        tint: root.ink
+                        visible: markIcon.ready
+                      }
+                      Text {
+                        anchors.centerIn: parent
+                        visible: !markIcon.ready
+                        text: String(row.modelData.name || row.pid).charAt(0).toUpperCase()
+                        color: root.ink
+                        font.family: Style.font.resolvedFamily
+                        font.pixelSize: Style.font.body
+                        font.bold: true
+                      }
+                    }
+
+                    Column {
+                      id: nameCol
+                      anchors.left: mark.right
+                      anchors.leftMargin: Style.space(12)
+                      anchors.right: controls.left
+                      anchors.rightMargin: Style.space(8)
+                      anchors.verticalCenter: parent.verticalCenter
+                      spacing: Style.space(2)
+
+                      Text {
+                        width: parent.width
+                        text: row.modelData.name || row.pid
+                        color: root.ink
+                        opacity: row.on ? 1 : 0.6
+                        font.family: Style.font.resolvedFamily
+                        font.pixelSize: Style.font.subtitle
+                        font.bold: true
+                        elide: Text.ElideRight
+                        textFormat: Text.PlainText
+                      }
+                      Row {
+                        spacing: Style.space(6)
 
                         Rectangle {
-                          width: 18
-                          height: 18
-                          radius: 9
-                          y: 4
-                          x: modelData.enabled === true ? parent.width - width - 4 : 4
-                          color: Color.background
+                          width: Style.space(6)
+                          height: width
+                          radius: width / 2
+                          anchors.verticalCenter: parent.verticalCenter
+                          color: row.signedOut ? Color.urgent : row.on ? Color.accent : Color.muted
                         }
-
-                        MouseArea {
-                          anchors.fill: parent
-                          onClicked: root.enabledToggled(String(modelData.id || ""), modelData.enabled !== true)
+                        Text {
+                          text: row.signedOut ? row.modelData.loginLabel + " · 点开登录"
+                            : row.on ? "显示在副屏" : "已隐藏"
+                          color: row.signedOut ? Color.urgent : root.dim
+                          font.family: Style.font.resolvedFamily
+                          font.pixelSize: Style.font.caption
+                          textFormat: Text.PlainText
                         }
                       }
+                    }
+
+                    Row {
+                      id: controls
+                      anchors.right: parent.right
+                      anchors.verticalCenter: parent.verticalCenter
+                      spacing: Style.space(2)
+
+                      Row {
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: Style.space(2)
+                        opacity: rowHit.containsMouse || row.expanded || upButton.hot || downButton.hot ? 1 : 0.35
+                        Behavior on opacity { NumberAnimation { duration: 120 } }
+
+                        Button {
+                          id: upButton
+                          iconText: ""
+                          iconSize: Style.font.caption
+                          tooltipText: "上移"
+                          enabled: row.index > 0
+                          opacity: enabled ? 1 : 0.3
+                          onClicked: root.orderMoved(row.pid, -1)
+                        }
+                        Button {
+                          id: downButton
+                          iconText: ""
+                          iconSize: Style.font.caption
+                          tooltipText: "下移"
+                          enabled: row.index < root.providerCount - 1
+                          opacity: enabled ? 1 : 0.3
+                          onClicked: root.orderMoved(row.pid, 1)
+                        }
+                      }
+
+                      Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Style.space(22)
+                        horizontalAlignment: Text.AlignHCenter
+                        text: ""
+                        color: root.dim
+                        font.family: Style.font.resolvedFamily
+                        font.pixelSize: Style.font.caption
+                        rotation: row.expanded ? 90 : 0
+                        Behavior on rotation { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                      }
+
+                      ToggleSwitch {
+                        anchors.verticalCenter: parent.verticalCenter
+                        checked: row.on
+                        onToggled: root.enabledToggled(row.pid, !row.on)
+                      }
+                    }
+                  }
+                }
+
+                Item {
+                  width: parent.width
+                  height: row.expanded ? drawer.implicitHeight : 0
+                  clip: true
+                  Behavior on height { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+
+                  Column {
+                    id: drawer
+                    x: Style.spacing.rowPaddingX + Style.space(40)
+                    width: parent.width - x - Style.spacing.rowPaddingX
+                    topPadding: Style.space(4)
+                    bottomPadding: Style.space(14)
+                    spacing: Style.spacing.rowGap
+                    opacity: row.expanded ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 160 } }
+
+                    Text {
+                      width: parent.width
+                      visible: text.length > 0 && !row.showsForm
+                      text: root.methodCaption(row.modelData)
+                      color: root.dim
+                      font.family: Style.font.resolvedFamily
+                      font.pixelSize: Style.font.caption
+                      wrapMode: Text.Wrap
+                      textFormat: Text.PlainText
                     }
 
                     Flow {
                       width: parent.width
-                      spacing: 6
+                      visible: !row.showsForm
+                      spacing: Style.spacing.controlGap
 
-                      LoginButton {
-                        visible: modelData.cli && String(modelData.cli.bin || "").length > 0
-                        primary: modelData.credentialKind === "cli"
-                        label: modelData.credentialKind === "cli" ? "浏览器登录" : "用 CLI 登录"
-                        onClicked: root.beginCli(modelData)
+                      Button {
+                        visible: row.modelData.cli && String(row.modelData.cli.bin || "").length > 0
+                        bordered: true
+                        selected: row.modelData.credentialKind === "cli"
+                        iconText: ""
+                        text: row.modelData.credentialKind === "cli" ? "浏览器登录" : "用 CLI 登录"
+                        onClicked: { root.expandedId = row.pid; root.beginCli(row.modelData) }
                       }
-
-                      LoginButton {
-                        visible: modelData.page && String(modelData.page.url || "").length > 0
-                        primary: modelData.credentialKind === "key" || modelData.credentialKind === "both"
-                        label: "打开 " + String(modelData.page && modelData.page.label ? modelData.page.label : "网页")
-                        onClicked: root.beginPage(modelData)
+                      Button {
+                        visible: row.modelData.page && String(row.modelData.page.url || "").length > 0
+                        bordered: true
+                        selected: row.modelData.credentialKind === "key" || row.modelData.credentialKind === "both"
+                        iconText: ""
+                        text: "打开 " + String(row.modelData.page && row.modelData.page.label ? row.modelData.page.label : "网页")
+                        onClicked: { root.expandedId = row.pid; root.beginPage(row.modelData) }
                       }
-
-                      LoginButton {
-                        label: "粘贴密钥"
-                        onClicked: root.beginPaste(modelData)
+                      Button {
+                        bordered: true
+                        iconText: ""
+                        text: "粘贴密钥"
+                        onClicked: { root.expandedId = row.pid; root.beginPaste(row.modelData) }
                       }
-
-                      LoginButton {
-                        visible: modelData.clearOffered === true
-                        label: "移除凭据"
-                        onClicked: root.clearCredential(modelData)
+                      Button {
+                        visible: row.modelData.clearOffered === true
+                        bordered: true
+                        foreground: Color.urgent
+                        iconText: ""
+                        text: "移除凭据"
+                        onClicked: root.clearCredential(row.modelData)
                       }
                     }
+
+                    Item {
+                      id: formSlot
+                      width: parent.width
+                      visible: row.showsForm
+                      height: row.showsForm ? loginForm.implicitHeight : 0
+                    }
+
+                    Binding {
+                      target: loginForm
+                      property: "parent"
+                      value: formSlot
+                      when: row.showsForm
+                    }
                   }
+                }
+              }
+            }
+          }
+        }
+
+        // The login form has one instance; the open Provider row borrows it.
+        Item {
+          id: formPark
+          visible: false
+
+          Rectangle {
+            id: loginForm
+            width: parent ? parent.width : 0
+            implicitHeight: formBody.implicitHeight + Style.space(24)
+            radius: Style.cornerRadius
+            color: Style.normalFill
+            border.width: 1
+            border.color: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.12)
+
+            Column {
+              id: formBody
+              x: Style.space(12)
+              y: Style.space(12)
+              width: parent.width - Style.space(24)
+              spacing: Style.spacing.rowGap
+
+              Row {
+                width: parent.width
+                spacing: Style.space(8)
+
+                Rectangle {
+                  id: busyDot
+                  width: Style.space(8)
+                  height: width
+                  radius: width / 2
+                  anchors.verticalCenter: parent.verticalCenter
+                  color: root.codeRejected ? Color.urgent : Color.accent
+                  SequentialAnimation on opacity {
+                    running: root.cliActive || root.credActive
+                    loops: Animation.Infinite
+                    onRunningChanged: if (!running) busyDot.opacity = 1
+                    NumberAnimation { to: 0.25; duration: 600; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 1; duration: 600; easing.type: Easing.InOutSine }
+                  }
+                }
+                Text {
+                  width: parent.width - busyDot.width - parent.spacing
+                  text: root.activeMode === "cli" ? "官方 CLI 登录" : "粘贴密钥"
+                  color: root.ink
+                  font.family: Style.font.resolvedFamily
+                  font.pixelSize: Style.font.body
+                  font.bold: true
+                  elide: Text.ElideRight
+                  textFormat: Text.PlainText
+                }
+              }
+
+              Text {
+                width: parent.width
+                visible: root.activeMode === "cli" && !(root.activeProvider && root.activeProvider.codeEntry)
+                text: "在浏览器里完成登录，这里会自动刷新。"
+                color: root.dim
+                font.family: Style.font.resolvedFamily
+                font.pixelSize: Style.font.caption
+                wrapMode: Text.Wrap
+                textFormat: Text.PlainText
+              }
+
+              Text {
+                width: parent.width
+                visible: root.activeMode === "cli" && root.activeProvider && root.activeProvider.codeEntry && !root.codeSent
+                text: "如果官方页面给出授权码，粘贴到下面。"
+                color: root.dim
+                font.family: Style.font.resolvedFamily
+                font.pixelSize: Style.font.caption
+                wrapMode: Text.Wrap
+                textFormat: Text.PlainText
+              }
+
+              TextField {
+                id: codeField
+                width: parent.width
+                visible: root.activeMode === "cli" && root.activeProvider && root.activeProvider.codeEntry && !root.codeSent
+                placeholderText: root.activeProvider && root.activeProvider.codeEntry ? String(root.activeProvider.codeEntry.hint || "") : ""
+                foreground: root.ink
+                accent: Color.accent
+                font.family: Style.font.resolvedFamily
+                onAccepted: root.submitCode(text)
+              }
+
+              Text {
+                width: parent.width
+                visible: root.activeMode === "cli" && root.codeSent && !root.codeRejected
+                text: "正在验证授权码…"
+                color: root.dim
+                font.family: Style.font.resolvedFamily
+                font.pixelSize: Style.font.caption
+                textFormat: Text.PlainText
+              }
+
+              TextField {
+                id: secretField
+                width: parent.width
+                visible: root.activeMode === "paste"
+                password: true
+                placeholderText: root.activeProvider ? String(root.activeProvider.hint || "") : ""
+                foreground: root.ink
+                accent: Color.accent
+                font.family: Style.font.resolvedFamily
+                onAccepted: {
+                  if (extraField.visible) extraField.forceActiveFocus()
+                  else root.savePaste()
+                }
+              }
+
+              TextField {
+                id: extraField
+                width: parent.width
+                visible: root.activeMode === "paste" && root.activeProvider && root.activeProvider.extra
+                placeholderText: root.activeProvider && root.activeProvider.extra ? String(root.activeProvider.extra.hint || "") : ""
+                foreground: root.ink
+                accent: Color.accent
+                font.family: Style.font.resolvedFamily
+                onAccepted: root.savePaste()
+              }
+
+              Flow {
+                width: parent.width
+                spacing: Style.spacing.controlGap
+
+                Button {
+                  visible: root.authUrl.length > 0
+                  bordered: true
+                  iconText: ""
+                  text: "打开授权页"
+                  onClicked: root.openPage(root.authUrl)
+                }
+                Button {
+                  visible: codeField.visible
+                  bordered: true
+                  selected: true
+                  text: "提交授权码"
+                  onClicked: root.submitCode(codeField.text)
+                }
+                Button {
+                  visible: root.activeMode === "paste"
+                  bordered: true
+                  selected: true
+                  text: root.credActive ? "保存中…" : "保存"
+                  onClicked: root.savePaste()
+                }
+                Button {
+                  visible: root.codeRejected
+                  bordered: true
+                  selected: true
+                  text: "重新登录"
+                  onClicked: if (root.activeProvider) root.beginCli(root.activeProvider)
+                }
+                Button {
+                  bordered: true
+                  text: "取消"
+                  onClicked: root.cancelActive()
                 }
               }
             }
@@ -780,64 +977,35 @@ Item {
     }
   }
 
-  component OrderButton: Rectangle {
-    id: moveButton
+  component Banner: Rectangle {
+    id: banner
 
-    property string label: ""
-    property bool canMove: true
-    signal clicked()
+    property string text: ""
+    property bool urgent: false
+    readonly property color tone: banner.urgent ? Color.urgent : Color.accent
 
-    width: 28
-    height: 28
-    radius: 8
-    color: root.rowColor
-    border.width: 1
-    border.color: root.lineColor
-    opacity: moveButton.canMove ? 1 : 0.35
+    width: parent ? parent.width : 0
+    visible: banner.text.length > 0
+    height: bannerText.implicitHeight + Style.space(16)
+    radius: Style.cornerRadius
+    color: Qt.rgba(banner.tone.r, banner.tone.g, banner.tone.b, 0.12)
 
-    Text {
-      anchors.centerIn: parent
-      text: moveButton.label
-      color: root.ink
-      font.family: Style.font.resolvedFamily
-      font.pixelSize: 16
-      font.bold: true
+    Rectangle {
+      width: Style.space(3)
+      height: parent.height
+      color: banner.tone
     }
-
-    MouseArea {
-      anchors.fill: parent
-      enabled: moveButton.canMove
-      onClicked: moveButton.clicked()
-    }
-  }
-
-  component LoginButton: Rectangle {
-    id: button
-
-    property string label: ""
-    property bool primary: false
-    signal clicked()
-
-    width: buttonLabel.implicitWidth + 20
-    height: 28
-    radius: 8
-    color: primary ? Color.accent : root.rowColor
-    border.width: primary ? 0 : 1
-    border.color: root.lineColor
-
     Text {
-      id: buttonLabel
-      anchors.centerIn: parent
-      text: button.label
-      color: button.primary ? root.accentInk : root.ink
+      id: bannerText
+      x: Style.space(14)
+      anchors.verticalCenter: parent.verticalCenter
+      width: parent.width - Style.space(24)
+      text: banner.text
+      color: banner.urgent ? Color.urgent : root.ink
       font.family: Style.font.resolvedFamily
-      font.pixelSize: Style.font.caption
+      font.pixelSize: Style.font.body
+      wrapMode: Text.Wrap
       textFormat: Text.PlainText
-    }
-
-    MouseArea {
-      anchors.fill: parent
-      onClicked: button.clicked()
     }
   }
 

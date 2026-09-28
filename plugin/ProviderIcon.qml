@@ -7,6 +7,7 @@ Item {
 
   property url source
   property color tint: "#D6D5BC"
+  readonly property bool ready: img.status === Image.Ready
 
   Image {
     id: img
