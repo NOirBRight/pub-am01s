@@ -42,7 +42,10 @@ Item {
     focusable: false
 
     WlrLayershell.namespace: "pub-am01s"
-    WlrLayershell.layer: WlrLayer.Top
+    // The Omarchy bar also lives on the Layer.Top level on every monitor and
+    // would draw its widgets over the Panel. The whole AM01S belongs to the
+    // Panel, so sit one level above it and cover the bar.
+    WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
     Rectangle {
