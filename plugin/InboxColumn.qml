@@ -18,6 +18,11 @@ Item {
     return String(Quickshell.env("HOME") || "") + "/.local/state"
   }
   readonly property string historyDir: stateHome + "/omarchy/notifications/history"
+  // Omarchy 4.5 keeps the whole history in one file, newest first.
+  readonly property string historyFile: stateHome + "/omarchy/notifications/history.json"
+  readonly property string notificationsDir: stateHome + "/omarchy/notifications"
+  readonly property string hiddenDir: stateHome + "/pub-am01s"
+  readonly property string hiddenFile: hiddenDir + "/inbox-hidden.json"
 
   // Third-party plugins cannot read the notification service. DND is the
   // shell IPC plus the file that service writes.
@@ -40,6 +45,9 @@ Item {
   readonly property color dangerColor: Color.urgent
 
   property var pendingDelete: ({})
+  // Rows swiped away from the single history.json. Omarchy has no per-entry
+  // delete IPC, so the Panel remembers them locally and filters them out.
+  property var hiddenPaths: ({})
   property bool readQueued: false
   property int activeSerial: 0
   property int appliedSerial: -1
@@ -55,6 +63,12 @@ Item {
   // path \t base64, one history file per line. textFromBase64 owns UTF-8.
   readonly property string readScript:
     "dir=\"$1\"\n" +
+    "hist=\"$2\"\n" +
+    "if [[ -f \"$hist\" ]]; then\n" +
+    "  printf '%s\\t' \"$hist\"\n" +
+    "  base64 -w 0 -- \"$hist\" 2>/dev/null || true\n" +
+    "  printf '\\n'\n" +
+    "fi\n" +
     "[[ -d \"$dir\" ]] || exit 0\n" +
     "find \"$dir\" -maxdepth 1 -type f -name '*.json' -print0 2>/dev/null | " +
     "while IFS= read -r -d '' f; do\n" +
@@ -64,29 +78,67 @@ Item {
     "done\n"
 
   readonly property string watchScript:
-    "dir=\"$1\"\n" +
-    "mkdir -p -- \"$dir\" 2>/dev/null || true\n" +
+    "state=\"$1\"\n" +
+    "dir=\"$2\"\n" +
+    "mkdir -p -- \"$state\" \"$dir\" 2>/dev/null || true\n" +
     "if ! command -v inotifywait >/dev/null 2>&1; then\n" +
     "  while true; do sleep 2; printf 'changed\\n'; done\n" +
     "fi\n" +
     "while true; do\n" +
-    "  if ! inotifywait -q -e close_write -e create -e delete -e moved_to -e moved_from -e move -- \"$dir\" >/dev/null; then\n" +
+    "  if ! inotifywait -q -e close_write -e create -e delete -e moved_to -e moved_from -e move -- \"$state\" \"$dir\" >/dev/null; then\n" +
     "    sleep 1\n" +
-    "    mkdir -p -- \"$dir\" 2>/dev/null || true\n" +
+    "    mkdir -p -- \"$state\" \"$dir\" 2>/dev/null || true\n" +
     "  fi\n" +
     "  printf 'changed\\n'\n" +
     "done\n"
 
   function isHistoryFile(path) {
     var file = String(path || "")
+    if (!file || file.indexOf("\n") >= 0 || file.indexOf("\0") >= 0) return false
+    // history.json#<key>: one row of the single-file store.
+    var single = root.historyFile + "#"
+    if (file.indexOf(single) === 0) {
+      var key = file.slice(single.length)
+      return key.length > 0 && key.indexOf("/") < 0
+    }
     var dir = root.historyDir
-    if (!file || !dir) return false
-    if (file.indexOf("\n") >= 0 || file.indexOf("\0") >= 0) return false
+    if (!dir) return false
     if (dir.charAt(dir.length - 1) !== "/") dir += "/"
     if (file.indexOf(dir) !== 0) return false
     var name = file.slice(dir.length)
     if (!name || name === "." || name === ".." || name.indexOf("/") >= 0) return false
     return name.length > 5 && name.slice(-5) === ".json"
+  }
+
+  function isLegacyFile(path) {
+    var file = String(path || "")
+    return root.isHistoryFile(file) && file.indexOf(root.historyFile + "#") !== 0
+  }
+
+  function isHidden(path) {
+    return Object.prototype.hasOwnProperty.call(root.hiddenPaths, String(path || ""))
+  }
+
+  function applyHidden(text) {
+    var next = {}
+    try {
+      var parsed = JSON.parse(String(text || ""))
+      if (Array.isArray(parsed)) {
+        for (var i = 0; i < parsed.length; i++) {
+          if (typeof parsed[i] === "string" && parsed[i]) next[parsed[i]] = true
+        }
+      }
+    } catch (e) {}
+    root.hiddenPaths = next
+    root.scheduleRead()
+  }
+
+  function saveHidden() {
+    var list = []
+    for (var key in root.hiddenPaths) {
+      if (Object.prototype.hasOwnProperty.call(root.hiddenPaths, key)) list.push(String(key))
+    }
+    hiddenFile.setText(JSON.stringify(list) + "\n")
   }
 
   function isPending(path) {
@@ -177,7 +229,12 @@ Item {
       var encoded = line.slice(tab + 1)
       files.push({ path: path, text: encoded ? InboxModel.textFromBase64(encoded) : "" })
     }
-    root.syncRows(InboxModel.readInbox(files, Date.now()))
+    var rows = InboxModel.readInbox(files, Date.now())
+    var visible = []
+    for (var r = 0; r < rows.length; r++) {
+      if (!root.isHidden(rows[r].path)) visible.push(rows[r])
+    }
+    root.syncRows(visible)
   }
 
   function finishRead(payload) {
@@ -194,7 +251,7 @@ Item {
     root.readQueued = false
     root.activeSerial += 1
     root.appliedSerial = -1
-    readProc.command = ["bash", "-c", root.readScript, "--", root.historyDir]
+    readProc.command = ["bash", "-c", root.readScript, "--", root.historyDir, root.historyFile]
     readProc.running = true
   }
 
@@ -305,7 +362,18 @@ Item {
     }
     next[path] = true
     root.pendingDelete = next
-    Quickshell.execDetached(["rm", "-f", "--", path])
+    if (root.isLegacyFile(path)) {
+      Quickshell.execDetached(["rm", "-f", "--", path])
+    } else {
+      // history.json is the service's file; remember the row here instead.
+      var hidden = {}
+      for (var held in root.hiddenPaths) {
+        if (Object.prototype.hasOwnProperty.call(root.hiddenPaths, held)) hidden[held] = true
+      }
+      hidden[path] = true
+      root.hiddenPaths = hidden
+      root.saveHidden()
+    }
     Qt.callLater(function() { root.removePath(path) })
   }
 
@@ -326,14 +394,29 @@ Item {
     var paths = []
     for (var i = 0; i < rowsModel.count; i++) {
       var path = String(rowsModel.get(i).path || "")
-      if (root.isHistoryFile(path)) paths.push(path)
+      if (root.isLegacyFile(path)) paths.push(path)
     }
     rowsModel.clear()
+    root.pendingDelete = ({})
+    root.hiddenPaths = ({})
+    root.saveHidden()
     if (paths.length > 0) Quickshell.execDetached(["rm", "-f", "--"].concat(paths))
+    // This also empties history.json and the notification service's memory.
     Quickshell.execDetached(["omarchy-shell", "notifications", "clear"])
   }
 
   ListModel { id: rowsModel }
+
+  FileView {
+    id: hiddenFile
+    path: root.hiddenFile
+    atomicWrites: true
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.applyHidden(text())
+    onFileChanged: reload()
+    onLoadFailed: root.applyHidden("")
+  }
 
   FileView {
     id: dndFile
@@ -361,7 +444,7 @@ Item {
   Process {
     id: watchProc
     running: true
-    command: ["bash", "-c", root.watchScript, "--", root.historyDir]
+    command: ["bash", "-c", root.watchScript, "--", root.notificationsDir, root.historyDir]
     stdout: SplitParser {
       onRead: function(line) { root.scheduleRead() }
     }
@@ -411,7 +494,10 @@ Item {
     }
   }
 
-  Component.onCompleted: root.scheduleRead()
+  Component.onCompleted: {
+    Quickshell.execDetached(["mkdir", "-p", root.hiddenDir])
+    root.scheduleRead()
+  }
 
   Item {
     id: frame
