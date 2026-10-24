@@ -132,8 +132,15 @@ function actionFrom(execArgv) {
   return parsed.slice()
 }
 
+// History files from older Omarchy store timestamp in ms; Omarchy 4.5's
+// history.json stores ts in seconds.
+function entryTimestamp(entry) {
+  if (entry.timestamp !== undefined && entry.timestamp !== null) return finiteNumber(entry.timestamp)
+  return finiteNumber(entry.ts) * 1000
+}
+
 function rowFrom(path, entry, nowMs) {
-  var timestamp = finiteNumber(entry.timestamp)
+  var timestamp = entryTimestamp(entry)
   return {
     path: String(path || ""),
     app: oneLine(entry.app),
@@ -146,6 +153,28 @@ function rowFrom(path, entry, nowMs) {
     system: systemSender(entry.app),
     timestamp: timestamp,
   }
+}
+
+// One history file is either a single entry (the old one-file-per-notification
+// store) or an array (Omarchy 4.5's history.json). Array entries get a stable
+// path of their own so a row can be dismissed without deleting the file.
+function rowsFromFile(file, parsed, nowMs) {
+  var rows = []
+  if (Array.isArray(parsed)) {
+    for (var i = 0; i < parsed.length; i++) {
+      var entry = parsed[i]
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue
+      // The service only stores keyed rows with a close time; ignore anything else.
+      if (typeof entry.key !== "string" || !entry.key) continue
+      var stamp = entryTimestamp(entry)
+      if (!isFinite(stamp) || stamp <= 0) continue
+      rows.push(rowFrom(String(file.path || "") + "#" + entry.key, entry, nowMs))
+    }
+    return rows
+  }
+  if (!parsed || typeof parsed !== "object") return rows
+  rows.push(rowFrom(file.path, parsed, nowMs))
+  return rows
 }
 
 function readInbox(files, nowMs) {
@@ -163,8 +192,8 @@ function readInbox(files, nowMs) {
     if (!trimmed) continue
     var parsed
     try { parsed = JSON.parse(trimmed) } catch (e) { continue }
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue
-    rows.push(rowFrom(file.path, parsed, nowMs))
+    var fromFile = rowsFromFile(file, parsed, nowMs)
+    for (var f = 0; f < fromFile.length; f++) rows.push(fromFile[f])
   }
   rows.sort(function(a, b) {
     if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp

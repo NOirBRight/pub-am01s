@@ -153,6 +153,24 @@ describe("readInbox", () => {
     expect(rows[0].summary).toBe("群")
     expect(rows[0].body).toBe(body)
   })
+
+  it("reads Omarchy 4.5's single history.json with second timestamps", () => {
+    const text = JSON.stringify([
+      { key: "new", app: "T3 Code", summary: "done", body: "one\ntwo", ts: now / 1000 - 30 },
+      { key: "old", app: "WeChat", summary: "hello", ts: now / 1000 - 3600 },
+      { key: "torn" },
+      "ignored",
+    ])
+    const rows = readInbox([{ path: "/state/notifications/history.json", text }], now)
+
+    expect(rows.map((row) => row.path)).toEqual([
+      "/state/notifications/history.json#new",
+      "/state/notifications/history.json#old",
+    ])
+    expect(rows.map((row) => row.app)).toEqual(["T3 Code", "WeChat"])
+    expect(rows[0]).toMatchObject({ summary: "done", body: "one two", timeLabel: "now", fresh: true })
+    expect(rows[1].timeLabel).toBe("1h")
+  })
 })
 
 describe("iconCandidates", () => {
