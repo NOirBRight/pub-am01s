@@ -22,7 +22,7 @@ Item {
   readonly property string historyFile: stateHome + "/omarchy/notifications/history.json"
   readonly property string notificationsDir: stateHome + "/omarchy/notifications"
   readonly property string hiddenDir: stateHome + "/pub-am01s"
-  readonly property string hiddenFile: hiddenDir + "/inbox-hidden.json"
+  readonly property string hiddenPath: hiddenDir + "/inbox-hidden.json"
 
   // Third-party plugins cannot read the notification service. DND is the
   // shell IPC plus the file that service writes.
@@ -47,7 +47,7 @@ Item {
   property var pendingDelete: ({})
   // Rows swiped away from the single history.json. Omarchy has no per-entry
   // delete IPC, so the Panel remembers them locally and filters them out.
-  property var hiddenPaths: ({})
+  property var hiddenRows: ({})
   property bool readQueued: false
   property int activeSerial: 0
   property int appliedSerial: -1
@@ -78,31 +78,47 @@ Item {
     "done\n"
 
   readonly property string watchScript:
-    "state=\"$1\"\n" +
+    "notifications=\"$1\"\n" +
     "dir=\"$2\"\n" +
-    "mkdir -p -- \"$state\" \"$dir\" 2>/dev/null || true\n" +
+    "mkdir -p -- \"$notifications\" \"$dir\" 2>/dev/null || true\n" +
     "if ! command -v inotifywait >/dev/null 2>&1; then\n" +
     "  while true; do sleep 2; printf 'changed\\n'; done\n" +
     "fi\n" +
     "while true; do\n" +
-    "  if ! inotifywait -q -e close_write -e create -e delete -e moved_to -e moved_from -e move -- \"$state\" \"$dir\" >/dev/null; then\n" +
+    "  if ! inotifywait -q -e close_write -e create -e delete -e moved_to -e moved_from -e move -- \"$notifications\" \"$dir\" >/dev/null; then\n" +
     "    sleep 1\n" +
-    "    mkdir -p -- \"$state\" \"$dir\" 2>/dev/null || true\n" +
+    "    mkdir -p -- \"$notifications\" \"$dir\" 2>/dev/null || true\n" +
     "  fi\n" +
     "  printf 'changed\\n'\n" +
     "done\n"
 
-  function isHistoryFile(path) {
-    var file = String(path || "")
-    if (!file || file.indexOf("\n") >= 0 || file.indexOf("\0") >= 0) return false
-    // history.json#<key>: one row of the single-file store.
-    var single = root.historyFile + "#"
-    if (file.indexOf(single) === 0) {
-      var key = file.slice(single.length)
-      return key.length > 0 && key.indexOf("/") < 0
+  function hasKey(set, key) {
+    return Object.prototype.hasOwnProperty.call(set, String(key || ""))
+  }
+
+  function withKey(set, key) {
+    var next = {}
+    for (var item in set) {
+      if (root.hasKey(set, item)) next[item] = true
     }
+    next[String(key || "")] = true
+    return next
+  }
+
+  function keyList(set) {
+    var list = []
+    for (var key in set) {
+      if (root.hasKey(set, key)) list.push(String(key))
+    }
+    return list
+  }
+
+  // Legacy rows are files under history/. Single-file rows never reach rm.
+  function isLegacyFile(path) {
+    var file = String(path || "")
     var dir = root.historyDir
-    if (!dir) return false
+    if (!file || !dir) return false
+    if (file.indexOf("\n") >= 0 || file.indexOf("\0") >= 0) return false
     if (dir.charAt(dir.length - 1) !== "/") dir += "/"
     if (file.indexOf(dir) !== 0) return false
     var name = file.slice(dir.length)
@@ -110,13 +126,8 @@ Item {
     return name.length > 5 && name.slice(-5) === ".json"
   }
 
-  function isLegacyFile(path) {
-    var file = String(path || "")
-    return root.isHistoryFile(file) && file.indexOf(root.historyFile + "#") !== 0
-  }
-
   function isHidden(path) {
-    return Object.prototype.hasOwnProperty.call(root.hiddenPaths, String(path || ""))
+    return root.hasKey(root.hiddenRows, path)
   }
 
   function applyHidden(text) {
@@ -129,20 +140,16 @@ Item {
         }
       }
     } catch (e) {}
-    root.hiddenPaths = next
+    root.hiddenRows = next
     root.scheduleRead()
   }
 
   function saveHidden() {
-    var list = []
-    for (var key in root.hiddenPaths) {
-      if (Object.prototype.hasOwnProperty.call(root.hiddenPaths, key)) list.push(String(key))
-    }
-    hiddenFile.setText(JSON.stringify(list) + "\n")
+    hiddenView.setText(JSON.stringify(root.keyList(root.hiddenRows)) + "\n")
   }
 
   function isPending(path) {
-    return Object.prototype.hasOwnProperty.call(root.pendingDelete, path)
+    return root.hasKey(root.pendingDelete, path)
   }
 
   function flatRow(row) {
@@ -162,7 +169,8 @@ Item {
       iconColor: String(icon.color || "#509475"),
       iconGlyph: String(icon.glyph || ""),
       actionJson: row.action ? JSON.stringify(row.action) : "",
-      system: row.system === true
+      system: row.system === true,
+      legacy: row.legacy === true
     }
   }
 
@@ -182,6 +190,7 @@ Item {
       && String(current.iconLetter) === next.iconLetter
       && String(current.iconColor) === next.iconColor
       && String(current.actionJson || "") === next.actionJson
+      && (!!current.legacy) === next.legacy
   }
 
   function syncRows(rows) {
@@ -353,28 +362,19 @@ Item {
     }
   }
 
-  function deleteHistory(path) {
-    if (!root.isHistoryFile(path)) return
-    var next = {}
-    var pending = root.pendingDelete
-    for (var key in pending) {
-      if (Object.prototype.hasOwnProperty.call(pending, key)) next[key] = true
-    }
-    next[path] = true
-    root.pendingDelete = next
-    if (root.isLegacyFile(path)) {
-      Quickshell.execDetached(["rm", "-f", "--", path])
+  function deleteHistory(path, legacy) {
+    var file = String(path || "")
+    if (!file) return
+    if (legacy && !root.isLegacyFile(file)) return
+    root.pendingDelete = root.withKey(root.pendingDelete, file)
+    if (legacy) {
+      Quickshell.execDetached(["rm", "-f", "--", file])
     } else {
       // history.json is the service's file; remember the row here instead.
-      var hidden = {}
-      for (var held in root.hiddenPaths) {
-        if (Object.prototype.hasOwnProperty.call(root.hiddenPaths, held)) hidden[held] = true
-      }
-      hidden[path] = true
-      root.hiddenPaths = hidden
+      root.hiddenRows = root.withKey(root.hiddenRows, file)
       root.saveHidden()
     }
-    Qt.callLater(function() { root.removePath(path) })
+    Qt.callLater(function() { root.removePath(file) })
   }
 
   function applyDnd(raw) {
@@ -393,12 +393,12 @@ Item {
   function clearHistory() {
     var paths = []
     for (var i = 0; i < rowsModel.count; i++) {
-      var path = String(rowsModel.get(i).path || "")
-      if (root.isLegacyFile(path)) paths.push(path)
+      var row = rowsModel.get(i)
+      if (row.legacy === true) paths.push(String(row.path || ""))
     }
     rowsModel.clear()
     root.pendingDelete = ({})
-    root.hiddenPaths = ({})
+    root.hiddenRows = ({})
     root.saveHidden()
     if (paths.length > 0) Quickshell.execDetached(["rm", "-f", "--"].concat(paths))
     // This also empties history.json and the notification service's memory.
@@ -408,8 +408,8 @@ Item {
   ListModel { id: rowsModel }
 
   FileView {
-    id: hiddenFile
-    path: root.hiddenFile
+    id: hiddenView
+    path: root.hiddenPath
     atomicWrites: true
     watchChanges: true
     printErrors: false
@@ -878,7 +878,7 @@ Item {
             preventStealing: false
             onReleased: {
               var decision = InboxModel.swipeDecision(card.x, note.width)
-              if (decision === "commit") root.deleteHistory(note.model.path)
+              if (decision === "commit") root.deleteHistory(note.model.path, note.model.legacy === true)
               else {
                 if (Math.abs(card.x) < 8) root.activate(note.model)
                 card.x = 0

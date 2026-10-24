@@ -139,7 +139,7 @@ function entryTimestamp(entry) {
   return finiteNumber(entry.ts) * 1000
 }
 
-function rowFrom(path, entry, nowMs) {
+function rowFrom(path, entry, nowMs, legacy) {
   var timestamp = entryTimestamp(entry)
   return {
     path: String(path || ""),
@@ -152,6 +152,8 @@ function rowFrom(path, entry, nowMs) {
     action: actionFrom(entry.execArgv),
     system: systemSender(entry.app),
     timestamp: timestamp,
+    // Only legacy rows are files the Panel may delete.
+    legacy: legacy === true,
   }
 }
 
@@ -168,12 +170,12 @@ function rowsFromFile(file, parsed, nowMs) {
       if (typeof entry.key !== "string" || !entry.key) continue
       var stamp = entryTimestamp(entry)
       if (!isFinite(stamp) || stamp <= 0) continue
-      rows.push(rowFrom(String(file.path || "") + "#" + entry.key, entry, nowMs))
+      rows.push(rowFrom(String(file.path || "") + "#" + entry.key, entry, nowMs, false))
     }
     return rows
   }
   if (!parsed || typeof parsed !== "object") return rows
-  rows.push(rowFrom(file.path, parsed, nowMs))
+  rows.push(rowFrom(file.path, parsed, nowMs, true))
   return rows
 }
 

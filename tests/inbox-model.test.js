@@ -30,6 +30,7 @@ describe("readInbox", () => {
       "/history/older.json",
     ])
     expect(rows.map((row) => row.app)).toEqual(["Feishu", "omp"])
+    expect(rows.map((row) => row.legacy)).toEqual([true, true])
     expect(rows[0].timeLabel).toBe("now")
     expect(rows[1].timeLabel).toBe("3h")
     expect(rows[1].body).toBe("one line")
@@ -168,6 +169,7 @@ describe("readInbox", () => {
       "/state/notifications/history.json#old",
     ])
     expect(rows.map((row) => row.app)).toEqual(["T3 Code", "WeChat"])
+    expect(rows.map((row) => row.legacy)).toEqual([false, false])
     expect(rows[0]).toMatchObject({ summary: "done", body: "one two", timeLabel: "now", fresh: true })
     expect(rows[1].timeLabel).toBe("1h")
   })
